@@ -31,7 +31,9 @@ export default function Signup() {
       console.error(error);
     }
   };
-
+  const goToSignup = () => {
+    router.push('/login');
+  };
   return (
     <form onSubmit={handleSignup} className={styles.signupContainer}>
       <input
@@ -57,7 +59,11 @@ export default function Signup() {
         <option value="customer_service">Customer Service</option>
         {/* Add more roles */}
       </select>
+      <div className={styles.newuser} onClick={goToSignup}>New User?Sign In</div>
+
+
       <button type="submit" className={styles.signupButton}>Sign Up</button>
+
     </form>
   );
 }

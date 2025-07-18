@@ -48,6 +48,8 @@ export interface WasteManagementRequest {
     detailsComp: boolean;
     email: string;
     firstName: string;
+    CompanyName: string;
+    employees: string;
     phone: string;
     riderImageUrl?: string;
     token?: string;
@@ -70,6 +72,9 @@ export interface WasteManagementRequest {
   export interface Client {
     id: string;
     dateOfBirth: string;
+    LastName: string;
+    firstName: string;
+
     detailsComp: boolean;
     ghCardNo: string;
     gpsAddress: string;

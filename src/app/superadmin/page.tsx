@@ -17,7 +17,7 @@ export default function SuperAdminPage() {
   const [recyclers, setRecyclers] = useState<Recycler[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<WasteManagementRequest | Recycler | null>(null);
+  const [selectedItem, setSelectedItem] = useState<WasteManagementRequest | Recycler | Client| null>(null);
   const [modalType, setModalType] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -97,6 +97,12 @@ export default function SuperAdminPage() {
     recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+
+  const filteredClients= clients.filter(clients => 
+    clients.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    clients.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) 
+    // clients.wasteManagementInfo?.CompanyName?.toLowerCase().includes(searchTerm.toLowerCase())
+);
   const handleDelete = async (collection: string, id: string) => {
     if (window.confirm('Are you sure you want to delete this item?')) {
       try {
@@ -170,12 +176,12 @@ export default function SuperAdminPage() {
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <h2>Waste Collection Requests</h2>
-          <button 
+          {/* <button 
             className={styles.addButton}
             onClick={() => setModalType('addRequest')}
           >
             Add New Request
-          </button>
+          </button> */}
         </div>
         
         <div className={styles.tableContainer}>
@@ -245,6 +251,62 @@ export default function SuperAdminPage() {
           </table>
         </div>
       </section>
+
+
+          {/* Client List */}
+          <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h2>Clients</h2>
+         
+        </div>
+        
+        <div className={styles.grid}>
+          {filteredClients.slice(0, 12).map(clients => (
+            <div key={clients.id} className={styles.recyclerCard}>
+              <div className={styles.recyclerHeader}>
+                {/* {clients.riderImageUrl && (
+                  <img 
+                    src={clients.riderImageUrl} 
+                    alt={`${clients.firstName} ${clients.LastName}`}
+                    className={styles.avatar}
+                  />
+                )} */}
+                <div>
+                  <h3>{clients.firstName} {clients.LastName}</h3>
+                  {/* <p className={styles.recyclerType}>{recycler.WMSTYPE}</p> */}
+                </div>
+              </div>
+              
+            
+              
+              <div className={styles.recyclerActions}>
+                <button 
+                  className={styles.viewButton}
+                  onClick={() => openDetailsModal(clients, 'recyclerDetails')}
+                >
+                  Details
+                </button>
+                <button 
+                  className={styles.editButton}
+                  onClick={() => {
+                    setSelectedItem(clients);
+                    setModalType('editRecycler');
+                  }}
+                >
+                  Edit
+                </button>
+                <button 
+                  className={styles.deleteButton}
+                  onClick={() => handleDelete('Recyclers', clients.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
 
       {/* Recyclers List */}
       <section className={styles.section}>
