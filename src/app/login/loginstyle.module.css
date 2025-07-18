@@ -1,0 +1,165 @@
+
+
+
+/*loginoage*/
+
+
+.pageContainer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #000000;
+    padding: 1rem;
+  }
+  
+  
+  .newuser{
+    color: #000000;
+  
+  
+  }
+  
+  .card {
+    background-color: white;
+    border-radius: 2rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    max-width: 960px;
+    width: 100%;
+    overflow: hidden;
+  }
+  
+  
+  @media (min-width: 768px) {
+    .card {
+      flex-direction: row;
+    }
+  }
+  
+  .formSection {
+    width: 100%;
+    padding: 2.5rem;
+  }
+  
+  .heading {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+  
+  
+  
+  .icon {
+    font-size: 2.5rem;
+  }
+  
+  .heading h2 {
+    font-size: 1.75rem;
+    margin-top: 0.5rem;
+  }
+  
+  .heading p {
+    color: #6b7280;
+  }
+  
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  
+  .input {
+    background-color: #f2f2f2;
+    padding: 0.55rem 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 899px;
+    font-size: 1rem;
+    outline: none;
+  }
+  
+  .input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  }
+  
+  .options {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.875rem;
+    color: #6b7280;
+  }
+  
+  .options a {
+    text-decoration: none;
+    color: #6b7280;
+  }
+  
+  .options a:hover {
+    text-decoration: underline;
+  }
+  
+  .loginButton {
+    background-color: #000000;
+    color: white;
+    padding: 0.75rem;
+    border: none;
+    border-radius: 9999px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  
+  .loginButton:hover {
+    background-color: #1e40af;
+  }
+  
+  .or {
+    text-align: center;
+    color: #9ca3af;
+  }
+  
+  .socialButtons {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+  }
+  
+  .apple {
+    background: black;
+    color: white;
+    padding: 0.75rem;
+    border-radius: 9999px;
+    font-size: 1.25rem;
+    border: none;
+  }
+  
+  .social {
+    background: white;
+    border: 1px solid #d1d5db;
+    padding: 0.75rem;
+    border-radius: 9999px;
+  }
+  
+  .imageSection {
+    display: none;
+    width: 50%;
+  }
+  
+  @media (min-width: 768px) {
+    .imageSection {
+      display: block;
+    }
+  
+    .loginImage {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-top-right-radius: 2rem;
+      border-bottom-right-radius: 2rem;
+    }
+  }
+  
+  .link:hover {
+    background-color: #bfdbfe; /* hover effect */
+  }

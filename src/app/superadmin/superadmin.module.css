@@ -1,0 +1,262 @@
+/* components/WasteManagementDashboard/WasteManagementDashboard.module.css */
+.dashboard {
+    padding: 2rem;
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+  
+  .title {
+    font-size: 2rem;
+    margin-bottom: 2rem;
+    color: #2d3748;
+  }
+  
+  .loading {
+    text-align: center;
+    padding: 2rem;
+    font-size: 1.2rem;
+  }
+  
+  .searchContainer {
+    margin-bottom: 2rem;
+  }
+  
+  .searchInput {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    max-width: 500px;
+  }
+  
+  .overviewCards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+  }
+  
+  .card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    text-align: center;
+  }
+  
+  .card h3 {
+    font-size: 1rem;
+    color: #718096;
+    margin-bottom: 0.5rem;
+  }
+  
+  .card p {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #2d3748;
+  }
+  
+  .section {
+    margin-bottom: 3rem;
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  
+  .sectionHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+  
+  .sectionHeader h2 {
+    font-size: 1.5rem;
+    color: #2d3748;
+  }
+  
+  .addButton {
+    background: #4299e1;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+  
+  .addButton:hover {
+    background: #3182ce;
+  }
+  
+  .tableContainer {
+    overflow-x: auto;
+  }
+  
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .table th, .table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  .table th {
+    background: #f7fafc;
+    font-weight: 600;
+    color: #4a5568;
+  }
+  
+  .clientCell, .wmsCell {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .name {
+    font-weight: 500;
+  }
+  
+  .phone {
+    font-size: 0.875rem;
+    color: #718096;
+  }
+  
+  .status {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  
+  .status.ended {
+    background: #c6f6d5;
+    color: #22543d;
+  }
+  
+  .status.pending {
+    background: #feebc8;
+    color: #7b341e;
+  }
+  
+  .status.cancelled {
+    background: #fed7d7;
+    color: #742a2a;
+  }
+  
+  .actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .viewButton, .editButton, .deleteButton {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    border: none;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: opacity 0.2s;
+  }
+  
+  .viewButton {
+    background: #e9d8fd;
+    color: #553c9a;
+  }
+  
+  .editButton {
+    background: #bee3f8;
+    color: #2b6cb0;
+  }
+  
+  .deleteButton {
+    background: #fed7d7;
+    color: #c53030;
+  }
+  
+  .viewButton:hover, .editButton:hover, .deleteButton:hover {
+    opacity: 0.8;
+  }
+  
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+  
+  .recyclerCard {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  
+  .recyclerCard:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .recyclerHeader {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  
+  .recyclerType {
+    color: #718096;
+    font-size: 0.875rem;
+  }
+  
+  .companyInfo {
+    margin: 1rem 0;
+    font-size: 0.875rem;
+    color: #4a5568;
+  }
+  
+  .companyInfo p {
+    margin: 0.25rem 0;
+  }
+  
+  .recyclerActions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  
+  .detailsModal {
+    padding: 1.5rem;
+    max-width: 800px;
+    width: 90vw;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .dashboard {
+      padding: 1rem;
+    }
+    
+    .overviewCards {
+      grid-template-columns: 1fr;
+    }
+    
+    .actions {
+      flex-direction: column;
+    }
+    
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }

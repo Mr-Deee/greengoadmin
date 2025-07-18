@@ -16,6 +16,39 @@
   font-family: var(--font-geist-sans);
 }
 
+
+
+
+
+.container {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #ffffff;
+  text-align: center;
+}
+
+.title {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+.link {
+  color: #ffffff;
+  background-color: #000000; /* light blue for visibility */
+  border: 1px solid #1a1a1a;
+  border-radius: 10%; /* full pill-like rounding */
+  text-decoration: none;
+  font-weight: 500;
+  margin: 0 0.25rem;
+  padding: 0.5rem 1rem;
+  display: inline-block;
+  transition: background-color 0.3s;
+}
+
 @media (prefers-color-scheme: dark) {
   .page {
     --gray-rgb: 255, 255, 255;
