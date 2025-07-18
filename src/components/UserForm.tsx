@@ -1,7 +1,6 @@
 // components/UserForm.tsx
 import React, { useState, useEffect } from 'react';
-import styles from '<div className="" />
-<Model></Model>.module.css';
+import styles from './Model.module.css';
 import { WasteManagementRequest, Recycler } from '@/types';
 
 interface UserFormProps {
