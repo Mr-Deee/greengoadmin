@@ -199,11 +199,19 @@ export default function SuperAdminPage() {
     }
   };
 
-  const handleUpdate = async (
-    collection: string,
-    id: string,
-    updatedData: any
-  ) => {
+  const handleCreate = async (collection: string, id: string, data: any) => {
+    try {
+      await update(ref(db, `${collection}/${id}`), data);
+      setModalType(null);
+      setSelectedItem(null);
+      alert("Item created successfully!");
+    } catch (error) {
+      console.error("Error creating item:", error);
+      alert("Failed to create item. Please try again.");
+    }
+  };
+
+  const handleUpdate = async (collection: string, id: string, updatedData: any) => {
     try {
       await update(ref(db, `${collection}/${id}`), updatedData);
       setModalType(null);
@@ -236,64 +244,66 @@ export default function SuperAdminPage() {
   if (viewMode === null) {
     return (
       <div className={styles.dashboard}>
-        <h1 className={styles.title}>Waste Management Dashboard</h1>
+        <div className={styles.glassContainer}>
+          <h1 className={styles.title}>Waste Management Dashboard</h1>
 
-        {/* Category Boxes */}
-        <div className={styles.categoryGrid}>
-          <div
-            className={styles.categoryCard}
-            onClick={() => setViewMode("clients")}
-          >
-            <div className={styles.categoryIcon}>👥</div>
-            <h3>Clients</h3>
-            <p className={styles.categoryCount}>{clients.length} registered</p>
+          {/* Category Boxes */}
+          <div className={styles.categoryGrid}>
+            <div
+              className={styles.categoryCard}
+              onClick={() => setViewMode("clients")}
+            >
+              <div className={styles.categoryIcon}>👥</div>
+              <h3>Clients</h3>
+              <p className={styles.categoryCount}>{clients.length} registered</p>
+            </div>
+
+            <div
+              className={styles.categoryCard}
+              onClick={() => setViewMode("recyclers")}
+            >
+              <div className={styles.categoryIcon}>♻️</div>
+              <h3>Primary Recyclers</h3>
+              <p className={styles.categoryCount}>{recyclers.length} active</p>
+            </div>
+
+            <div
+              className={styles.categoryCard}
+              onClick={() => setViewMode("secondary")}
+            >
+              <div className={styles.categoryIcon}>🏭</div>
+              <h3>Secondary Recyclers</h3>
+              <p className={styles.categoryCount}>
+                {secondaryRecyclers.length} active
+              </p>
+            </div>
+
+            <div
+              className={styles.categoryCard}
+              onClick={() => setViewMode("tertiary")}
+            >
+              <div className={styles.categoryIcon}>🔧</div>
+              <h3>Tertiary Recyclers</h3>
+              <p className={styles.categoryCount}>
+                {tertiaryRecyclers.length} active
+              </p>
+            </div>
           </div>
 
-          <div
-            className={styles.categoryCard}
-            onClick={() => setViewMode("recyclers")}
-          >
-            <div className={styles.categoryIcon}>♻️</div>
-            <h3>Primary Recyclers</h3>
-            <p className={styles.categoryCount}>{recyclers.length} active</p>
-          </div>
-
-          <div
-            className={styles.categoryCard}
-            onClick={() => setViewMode("secondary")}
-          >
-            <div className={styles.categoryIcon}>🏭</div>
-            <h3>Secondary Recyclers</h3>
-            <p className={styles.categoryCount}>
-              {secondaryRecyclers.length} active
-            </p>
-          </div>
-
-          <div
-            className={styles.categoryCard}
-            onClick={() => setViewMode("tertiary")}
-          >
-            <div className={styles.categoryIcon}>🔧</div>
-            <h3>Tertiary Recyclers</h3>
-            <p className={styles.categoryCount}>
-              {tertiaryRecyclers.length} active
-            </p>
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className={styles.overviewCards}>
-          <div className={styles.card}>
-            <h3>Total Requests</h3>
-            <p>{requests.length}</p>
-          </div>
-          <div className={styles.card}>
-            <h3>Total Recyclers</h3>
-            <p>{recyclers.length + secondaryRecyclers.length + tertiaryRecyclers.length}</p>
-          </div>
-          <div className={styles.card}>
-            <h3>Registered Clients</h3>
-            <p>{clients.length}</p>
+          {/* Quick Stats */}
+          <div className={styles.overviewCards}>
+            <div className={styles.card}>
+              <h3>Total Requests</h3>
+              <p>{requests.length}</p>
+            </div>
+            <div className={styles.card}>
+              <h3>Total Recyclers</h3>
+              <p>{recyclers.length + secondaryRecyclers.length + tertiaryRecyclers.length}</p>
+            </div>
+            <div className={styles.card}>
+              <h3>Registered Clients</h3>
+              <p>{clients.length}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -304,156 +314,166 @@ export default function SuperAdminPage() {
   if (viewMode === "clients") {
     return (
       <div className={styles.dashboard}>
-        <div className={styles.viewHeader}>
-          <button className={styles.backButton} onClick={closeView}>
-            ← Back to Dashboard
-          </button>
-          <h2>Clients Management</h2>
-          <button
-            className={styles.addButton}
-            onClick={() => {
-              setSelectedItem(null);
-              setModalType("addClient");
-            }}
-          >
-            + Add Client
-          </button>
-        </div>
+        <div className={styles.glassContainer}>
+          <div className={styles.viewHeader}>
+            <button className={styles.backButton} onClick={closeView}>
+              ← Back to Dashboard
+            </button>
+            <h2>Clients Management</h2>
+            <button
+              className={styles.addButton}
+              onClick={() => {
+                setSelectedItem(null);
+                setModalType("addClient");
+              }}
+            >
+              + Add Client
+            </button>
+          </div>
 
-        <div className={styles.searchContainer}>
-          <input
-            type="text"
-            placeholder="Search clients by name, email, or phone..."
-            className={styles.searchInput}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+          <div className={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="Search clients by name, email, or phone..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-        <div className={styles.grid}>
-          {filteredClients.map((client) => (
-            <div key={client.id} className={styles.recyclerCard}>
-              <div className={styles.recyclerHeader}>
-                <div className={styles.avatarPlaceholder}>
-                  {client.firstName?.charAt(0) || "?"}
-                  {client.LastName?.charAt(0) || ""}
+          <div className={styles.grid}>
+            {filteredClients.map((client) => (
+              <div key={client.id} className={styles.recyclerCard}>
+                <div className={styles.recyclerHeader}>
+                  <div className={styles.avatarPlaceholder}>
+                    {client.firstName?.charAt(0) || "?"}
+                    {client.LastName?.charAt(0) || ""}
+                  </div>
+                  <div>
+                    <h3>
+                      {client.firstName || "Unknown"} {client.LastName || ""}
+                    </h3>
+                    <p className={styles.recyclerType}>
+                      {client.SettlementType || "Client"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3>
-                    {client.firstName || "Unknown"} {client.LastName || ""}
-                  </h3>
-                  <p className={styles.recyclerType}>
-                    {client.SettlementType || "Client"}
+
+                <div className={styles.companyInfo}>
+                  <p>
+                    <strong>Email:</strong> {client.email || "N/A"}
+                  </p>
+                  <p>
+                    <strong>Phone:</strong> {client.phoneNumber || "N/A"}
+                  </p>
+                  <p>
+                    <strong>Location:</strong> {client.location || "N/A"}
                   </p>
                 </div>
-              </div>
 
-              <div className={styles.companyInfo}>
-                <p>
-                  <strong>Email:</strong> {client.email || "N/A"}
-                </p>
-                <p>
-                  <strong>Phone:</strong> {client.phoneNumber || "N/A"}
-                </p>
-                <p>
-                  <strong>Location:</strong> {client.location || "N/A"}
-                </p>
-              </div>
-
-              <div className={styles.recyclerActions}>
-                <button
-                  className={styles.viewButton}
-                  onClick={() => openDetailsModal(client, "clientDetails")}
-                >
-                  Details
-                </button>
-                <button
-                  className={styles.editButton}
-                  onClick={() => {
-                    setSelectedItem(client);
-                    setModalType("editClient");
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  className={styles.deleteButton}
-                  onClick={() => handleDelete("Clients", client.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {filteredClients.length === 0 && (
-          <div className={styles.noResults}>No clients found.</div>
-        )}
-
-        {/* Modals */}
-        {modalType && (
-          <Modal
-            onClose={() => {
-              setModalType(null);
-              setSelectedItem(null);
-            }}
-          >
-            {(modalType === "editClient" || modalType === "addClient") && (
-              <UserForm
-                // type="client"
-                initialData={modalType === "editClient" && selectedItem
-                  ? selectedItem
-                  : undefined}
-                onSubmit={(data: any) => handleUpdate(
-                  "Clients",
-                  modalType === "editClient" && selectedItem
-                    ? selectedItem.id
-                    : Date.now().toString(),
-                  data
-                )} type={"recycler"}              />
-            )}
-            {modalType === "clientDetails" && selectedItem && (
-              <div className={styles.detailsModal}>
-                <h2>Client Details</h2>
-                <div className={styles.detailsContent}>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Name:</span>
-                    <span>
-                      {(selectedItem as Client).firstName || "N/A"} {(selectedItem as Client).LastName || ""}
-                    </span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Email:</span>
-                    <span>{(selectedItem as Client).email || "N/A"}</span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Phone:</span>
-                    <span>{(selectedItem as Client).phoneNumber || "N/A"}</span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Location:</span>
-                    <span>{(selectedItem as Client).location || "N/A"}</span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Settlement Type:</span>
-                    <span>
-                      {(selectedItem as Client).SettlementType || "N/A"}
-                    </span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>GPS Address:</span>
-                    <span>{(selectedItem as Client).gpsAddress || "N/A"}</span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>GH Card No:</span>
-                    <span>{(selectedItem as Client).ghCardNo || "N/A"}</span>
-                  </div>
+                <div className={styles.recyclerActions}>
+                  <button
+                    className={styles.viewButton}
+                    onClick={() => openDetailsModal(client, "clientDetails")}
+                  >
+                    Details
+                  </button>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => {
+                      setSelectedItem(client);
+                      setModalType("editClient");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDelete("Clients", client.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
-            )}
-          </Modal>
-        )}
+            ))}
+          </div>
+
+          {filteredClients.length === 0 && (
+            <div className={styles.noResults}>No clients found.</div>
+          )}
+
+          {/* Modals */}
+          {modalType && (
+            <Modal
+              onClose={() => {
+                setModalType(null);
+                setSelectedItem(null);
+              }}
+            >
+              {(modalType === "editClient" || modalType === "addClient") && (
+                <UserForm
+                  type="client"
+                  initialData={modalType === "editClient" && selectedItem ? selectedItem : undefined}
+                  onSubmit={(data: any) => {
+                    if (modalType === "editClient" && selectedItem) {
+                      handleUpdate("Clients", selectedItem.id, data);
+                    } else {
+                      handleCreate("Clients", Date.now().toString(), data);
+                    }
+                  }}
+                  onCancel={() => {
+                    setModalType(null);
+                    setSelectedItem(null);
+                  }}
+                />
+              )}
+              {modalType === "clientDetails" && selectedItem && (
+                <div className={styles.detailsModal}>
+                  <h2>Client Details</h2>
+                  <div className={styles.detailsContent}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Name:</span>
+                      <span>
+                        {(selectedItem as Client).firstName || "N/A"} {(selectedItem as Client).LastName || ""}
+                      </span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Email:</span>
+                      <span>{(selectedItem as Client).email || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Phone:</span>
+                      <span>{(selectedItem as Client).phoneNumber || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Location:</span>
+                      <span>{(selectedItem as Client).location || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Settlement Type:</span>
+                      <span>{(selectedItem as Client).SettlementType || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>GPS Address:</span>
+                      <span>{(selectedItem as Client).gpsAddress || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>GH Card No:</span>
+                      <span>{(selectedItem as Client).ghCardNo || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Date of Birth:</span>
+                      <span>{(selectedItem as Client).dateOfBirth || "N/A"}</span>
+                    </div>
+                  </div>
+                  <div className={styles.formActions}>
+                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
+                  </div>
+                </div>
+              )}
+            </Modal>
+          )}
+        </div>
       </div>
     );
   }
@@ -462,199 +482,202 @@ export default function SuperAdminPage() {
   if (viewMode === "recyclers") {
     return (
       <div className={styles.dashboard}>
-        <div className={styles.viewHeader}>
-          <button className={styles.backButton} onClick={closeView}>
-            ← Back to Dashboard
-          </button>
-          <h2>Primary Recyclers Management</h2>
-          <button
-            className={styles.addButton}
-            onClick={() => {
-              setSelectedItem(null);
-              setModalType("addRecycler");
-            }}
-          >
-            + Add Recycler
-          </button>
-        </div>
+        <div className={styles.glassContainer}>
+          <div className={styles.viewHeader}>
+            <button className={styles.backButton} onClick={closeView}>
+              ← Back to Dashboard
+            </button>
+            <h2>Primary Recyclers Management</h2>
+            <button
+              className={styles.addButton}
+              onClick={() => {
+                setSelectedItem(null);
+                setModalType("addRecycler");
+              }}
+            >
+              + Add Recycler
+            </button>
+          </div>
 
-        <div className={styles.searchContainer}>
-          <input
-            type="text"
-            placeholder="Search recyclers by name, email, or company..."
-            className={styles.searchInput}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+          <div className={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="Search recyclers by name, email, or company..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-        <div className={styles.grid}>
-          {filteredRecyclers.map((recycler) => (
-            <div key={recycler.id} className={styles.recyclerCard}>
-              <div className={styles.recyclerHeader}>
-                {recycler.riderImageUrl ? (
-                  <img
-                    src={recycler.riderImageUrl}
-                    alt={`${recycler.firstName} ${recycler.LastName}`}
-                    className={styles.avatar}
-                  />
-                ) : (
-                  <div className={styles.avatarPlaceholder}>
-                    {recycler.firstName?.charAt(0) || "?"}
-                    {recycler.LastName?.charAt(0) || ""}
+          <div className={styles.grid}>
+            {filteredRecyclers.map((recycler) => (
+              <div key={recycler.id} className={styles.recyclerCard}>
+                <div className={styles.recyclerHeader}>
+                  {recycler.riderImageUrl ? (
+                    <img
+                      src={recycler.riderImageUrl}
+                      alt={`${recycler.firstName} ${recycler.LastName}`}
+                      className={styles.avatar}
+                    />
+                  ) : (
+                    <div className={styles.avatarPlaceholder}>
+                      {recycler.firstName?.charAt(0) || "?"}
+                      {recycler.LastName?.charAt(0) || ""}
+                    </div>
+                  )}
+                  <div>
+                    <h3>
+                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
+                    </h3>
+                    <p className={styles.recyclerType}>
+                      {recycler.WMSTYPE || "Primary Recycler"}
+                    </p>
+                  </div>
+                </div>
+
+                {recycler.wasteManagementInfo && (
+                  <div className={styles.companyInfo}>
+                    <p>
+                      <strong>Company:</strong>{" "}
+                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Location:</strong>{" "}
+                      {recycler.wasteManagementInfo.location || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Email:</strong> {recycler.email || "N/A"}
+                    </p>
                   </div>
                 )}
-                <div>
-                  <h3>
-                    {recycler.firstName || "Unknown"} {recycler.LastName || ""}
-                  </h3>
-                  <p className={styles.recyclerType}>
-                    {recycler.WMSTYPE || "Primary Recycler"}
-                  </p>
+
+                <div className={styles.recyclerActions}>
+                  <button
+                    className={styles.viewButton}
+                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
+                  >
+                    Details
+                  </button>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => {
+                      setSelectedItem(recycler);
+                      setModalType("editRecycler");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDelete("Recyclers", recycler.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
+            ))}
+          </div>
 
-              {recycler.wasteManagementInfo && (
-                <div className={styles.companyInfo}>
-                  <p>
-                    <strong>Company:</strong>{" "}
-                    {recycler.wasteManagementInfo.CompanyName || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Location:</strong>{" "}
-                    {recycler.wasteManagementInfo.location || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Email:</strong> {recycler.email || "N/A"}
-                  </p>
+          {filteredRecyclers.length === 0 && (
+            <div className={styles.noResults}>No primary recyclers found.</div>
+          )}
+
+          {/* Modals */}
+          {modalType && (
+            <Modal
+              onClose={() => {
+                setModalType(null);
+                setSelectedItem(null);
+              }}
+            >
+              {(modalType === "editRecycler" || modalType === "addRecycler") && (
+                <UserForm
+                  type="recycler"
+                  initialData={modalType === "editRecycler" && selectedItem ? selectedItem : undefined}
+                  onSubmit={(data: any) => {
+                    if (modalType === "editRecycler" && selectedItem) {
+                      handleUpdate("Recyclers", selectedItem.id, data);
+                    } else {
+                      handleCreate("Recyclers", Date.now().toString(), data);
+                    }
+                  }}
+                  onCancel={() => {
+                    setModalType(null);
+                    setSelectedItem(null);
+                  }}
+                />
+              )}
+              {modalType === "recyclerDetails" && selectedItem && (
+                <div className={styles.detailsModal}>
+                  <h2>Recycler Details</h2>
+                  <div className={styles.detailsContent}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Name:</span>
+                      <span>
+                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
+                      </span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Email:</span>
+                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Phone:</span>
+                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Category:</span>
+                      <span>{getRecyclerCategory(selectedItem as Recycler)}</span>
+                    </div>
+                    {(selectedItem as Recycler).wasteManagementInfo && (
+                      <>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Company:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Location:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Recycle Type:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.RecycleType || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Waste Category:</span>
+                          <span>
+                            {getWasteCategory(selectedItem as Recycler)}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Waste Classification:</span>
+                          <span>
+                            {getWasteClassification(selectedItem as Recycler)}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Employees:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.employees || "N/A"}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className={styles.formActions}>
+                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
+                  </div>
                 </div>
               )}
-
-              <div className={styles.recyclerActions}>
-                <button
-                  className={styles.viewButton}
-                  onClick={() => openDetailsModal(recycler, "recyclerDetails")}
-                >
-                  Details
-                </button>
-                <button
-                  className={styles.editButton}
-                  onClick={() => {
-                    setSelectedItem(recycler);
-                    setModalType("editRecycler");
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  className={styles.deleteButton}
-                  onClick={() => handleDelete("Recyclers", recycler.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
+            </Modal>
+          )}
         </div>
-
-        {filteredRecyclers.length === 0 && (
-          <div className={styles.noResults}>No primary recyclers found.</div>
-        )}
-
-        {/* Modals */}
-        {modalType && (
-          <Modal
-            onClose={() => {
-              setModalType(null);
-              setSelectedItem(null);
-            }}
-          >
-            {(modalType === "editRecycler" || modalType === "addRecycler") && (
-              <UserForm
-                type="recycler"
-                initialData={
-                  modalType === "editRecycler" && selectedItem
-                    ? selectedItem
-                    : undefined
-                }
-                onSubmit={(data: any) =>
-                  handleUpdate(
-                    "Recyclers",
-                    modalType === "editRecycler" && selectedItem
-                      ? selectedItem.id
-                      : Date.now().toString(),
-                    data
-                  )
-                }
-              />
-            )}
-            {modalType === "recyclerDetails" && selectedItem && (
-              <div className={styles.detailsModal}>
-                <h2>Recycler Details</h2>
-                <div className={styles.detailsContent}>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Name:</span>
-                    <span>
-                      {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
-                    </span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Email:</span>
-                    <span>{(selectedItem as Recycler).email || "N/A"}</span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Phone:</span>
-                    <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Category:</span>
-                    <span>{getRecyclerCategory(selectedItem as Recycler)}</span>
-                  </div>
-                  {(selectedItem as Recycler).wasteManagementInfo && (
-                    <>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Company:</span>
-                        <span>
-                          {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Location:</span>
-                        <span>
-                          {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Recycle Type:</span>
-                        <span>
-                          {(selectedItem as Recycler).wasteManagementInfo?.RecycleType || "N/A"}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Waste Category:</span>
-                        <span>
-                          {getWasteCategory(selectedItem as Recycler)}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Waste Classification:</span>
-                        <span>
-                          {getWasteClassification(selectedItem as Recycler)}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Employees:</span>
-                        <span>
-                          {(selectedItem as Recycler).wasteManagementInfo?.employees || "N/A"}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </Modal>
-        )}
       </div>
     );
   }
@@ -663,183 +686,184 @@ export default function SuperAdminPage() {
   if (viewMode === "secondary") {
     return (
       <div className={styles.dashboard}>
-        <div className={styles.viewHeader}>
-          <button className={styles.backButton} onClick={closeView}>
-            ← Back to Dashboard
-          </button>
-          <h2>Secondary Recyclers Management</h2>
-          <button
-            className={styles.addButton}
-            onClick={() => {
-              setSelectedItem(null);
-              setModalType("addSecondary");
-            }}
-          >
-            + Add Secondary Recycler
-          </button>
-        </div>
+        <div className={styles.glassContainer}>
+          <div className={styles.viewHeader}>
+            <button className={styles.backButton} onClick={closeView}>
+              ← Back to Dashboard
+            </button>
+            <h2>Secondary Recyclers Management</h2>
+            <button
+              className={styles.addButton}
+              onClick={() => {
+                setSelectedItem(null);
+                setModalType("addSecondary");
+              }}
+            >
+              + Add Secondary Recycler
+            </button>
+          </div>
 
-        <div className={styles.searchContainer}>
-          <input
-            type="text"
-            placeholder="Search secondary recyclers..."
-            className={styles.searchInput}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+          <div className={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="Search secondary recyclers..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-        <div className={styles.grid}>
-          {filteredSecondaryRecyclers.map((recycler) => (
-            <div key={recycler.id} className={styles.recyclerCard}>
-              <div className={styles.recyclerHeader}>
-                {recycler.riderImageUrl ? (
-                  <img
-                    src={recycler.riderImageUrl}
-                    alt={`${recycler.firstName} ${recycler.LastName}`}
-                    className={styles.avatar}
-                  />
-                ) : (
-                  <div className={styles.avatarPlaceholder}>
-                    {recycler.firstName?.charAt(0) || "?"}
-                    {recycler.LastName?.charAt(0) || ""}
+          <div className={styles.grid}>
+            {filteredSecondaryRecyclers.map((recycler) => (
+              <div key={recycler.id} className={styles.recyclerCard}>
+                <div className={styles.recyclerHeader}>
+                  {recycler.riderImageUrl ? (
+                    <img
+                      src={recycler.riderImageUrl}
+                      alt={`${recycler.firstName} ${recycler.LastName}`}
+                      className={styles.avatar}
+                    />
+                  ) : (
+                    <div className={styles.avatarPlaceholder}>
+                      {recycler.firstName?.charAt(0) || "?"}
+                      {recycler.LastName?.charAt(0) || ""}
+                    </div>
+                  )}
+                  <div>
+                    <h3>
+                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
+                    </h3>
+                    <p className={styles.recyclerType}>Secondary Recycler</p>
+                  </div>
+                </div>
+
+                {recycler.wasteManagementInfo && (
+                  <div className={styles.companyInfo}>
+                    <p>
+                      <strong>Company:</strong>{" "}
+                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Location:</strong>{" "}
+                      {recycler.wasteManagementInfo.location || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Email:</strong> {recycler.email || "N/A"}
+                    </p>
                   </div>
                 )}
-                <div>
-                  <h3>
-                    {recycler.firstName || "Unknown"} {recycler.LastName || ""}
-                  </h3>
-                  <p className={styles.recyclerType}>Secondary Recycler</p>
+
+                <div className={styles.recyclerActions}>
+                  <button
+                    className={styles.viewButton}
+                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
+                  >
+                    Details
+                  </button>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => {
+                      setSelectedItem(recycler);
+                      setModalType("editSecondary");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDelete("Recyclers", recycler.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
+            ))}
+          </div>
 
-              {recycler.wasteManagementInfo && (
-                <div className={styles.companyInfo}>
-                  <p>
-                    <strong>Company:</strong>{" "}
-                    {recycler.wasteManagementInfo.CompanyName || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Location:</strong>{" "}
-                    {recycler.wasteManagementInfo.location || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Email:</strong> {recycler.email || "N/A"}
-                  </p>
+          {filteredSecondaryRecyclers.length === 0 && (
+            <div className={styles.noResults}>No secondary recyclers found.</div>
+          )}
+
+          {/* Modals */}
+          {modalType && (
+            <Modal
+              onClose={() => {
+                setModalType(null);
+                setSelectedItem(null);
+              }}
+            >
+              {(modalType === "editSecondary" || modalType === "addSecondary") && (
+                <UserForm
+                  type="recycler"
+                  initialData={modalType === "editSecondary" && selectedItem ? selectedItem : undefined}
+                  onSubmit={(data: any) => {
+                    if (modalType === "editSecondary" && selectedItem) {
+                      handleUpdate("Recyclers", selectedItem.id, data);
+                    } else {
+                      handleCreate("Recyclers", Date.now().toString(), data);
+                    }
+                  }}
+                  onCancel={() => {
+                    setModalType(null);
+                    setSelectedItem(null);
+                  }}
+                />
+              )}
+              {modalType === "recyclerDetails" && selectedItem && (
+                <div className={styles.detailsModal}>
+                  <h2>Secondary Recycler Details</h2>
+                  <div className={styles.detailsContent}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Name:</span>
+                      <span>
+                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
+                      </span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Email:</span>
+                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Phone:</span>
+                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
+                    </div>
+                    {(selectedItem as Recycler).wasteManagementInfo && (
+                      <>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Company:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Location:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Waste Categories:</span>
+                          <span>
+                            {getWasteCategory(selectedItem as Recycler)}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Waste Classifications:</span>
+                          <span>
+                            {getWasteClassification(selectedItem as Recycler)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className={styles.formActions}>
+                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
+                  </div>
                 </div>
               )}
-
-              <div className={styles.recyclerActions}>
-                <button
-                  className={styles.viewButton}
-                  onClick={() => openDetailsModal(recycler, "recyclerDetails")}
-                >
-                  Details
-                </button>
-                <button
-                  className={styles.editButton}
-                  onClick={() => {
-                    setSelectedItem(recycler);
-                    setModalType("editSecondary");
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  className={styles.deleteButton}
-                  onClick={() => handleDelete("Recyclers", recycler.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
+            </Modal>
+          )}
         </div>
-
-        {filteredSecondaryRecyclers.length === 0 && (
-          <div className={styles.noResults}>
-            No secondary recyclers found.
-          </div>
-        )}
-
-        {/* Modals */}
-        {modalType && (
-          <Modal
-            onClose={() => {
-              setModalType(null);
-              setSelectedItem(null);
-            }}
-          >
-            {(modalType === "editSecondary" || modalType === "addSecondary") && (
-              <UserForm
-                type="recycler"
-                initialData={
-                  modalType === "editSecondary" && selectedItem
-                    ? selectedItem
-                    : undefined
-                }
-                onSubmit={(data: any) =>
-                  handleUpdate(
-                    "Recyclers",
-                    modalType === "editSecondary" && selectedItem
-                      ? selectedItem.id
-                      : Date.now().toString(),
-                    data
-                  )
-                }
-              />
-            )}
-            {modalType === "recyclerDetails" && selectedItem && (
-              <div className={styles.detailsModal}>
-                <h2>Secondary Recycler Details</h2>
-                <div className={styles.detailsContent}>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Name:</span>
-                    <span>
-                      {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
-                    </span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Email:</span>
-                    <span>{(selectedItem as Recycler).email || "N/A"}</span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Phone:</span>
-                    <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
-                  </div>
-                  {(selectedItem as Recycler).wasteManagementInfo && (
-                    <>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Company:</span>
-                        <span>
-                          {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Location:</span>
-                        <span>
-                          {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Waste Categories:</span>
-                        <span>
-                          {getWasteCategory(selectedItem as Recycler)}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Waste Classifications:</span>
-                        <span>
-                          {getWasteClassification(selectedItem as Recycler)}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </Modal>
-        )}
       </div>
     );
   }
@@ -848,169 +872,172 @@ export default function SuperAdminPage() {
   if (viewMode === "tertiary") {
     return (
       <div className={styles.dashboard}>
-        <div className={styles.viewHeader}>
-          <button className={styles.backButton} onClick={closeView}>
-            ← Back to Dashboard
-          </button>
-          <h2>Tertiary Recyclers Management</h2>
-          <button
-            className={styles.addButton}
-            onClick={() => {
-              setSelectedItem(null);
-              setModalType("addTertiary");
-            }}
-          >
-            + Add Tertiary Recycler
-          </button>
-        </div>
+        <div className={styles.glassContainer}>
+          <div className={styles.viewHeader}>
+            <button className={styles.backButton} onClick={closeView}>
+              ← Back to Dashboard
+            </button>
+            <h2>Tertiary Recyclers Management</h2>
+            <button
+              className={styles.addButton}
+              onClick={() => {
+                setSelectedItem(null);
+                setModalType("addTertiary");
+              }}
+            >
+              + Add Tertiary Recycler
+            </button>
+          </div>
 
-        <div className={styles.searchContainer}>
-          <input
-            type="text"
-            placeholder="Search tertiary recyclers..."
-            className={styles.searchInput}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+          <div className={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="Search tertiary recyclers..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-        <div className={styles.grid}>
-          {filteredTertiaryRecyclers.map((recycler) => (
-            <div key={recycler.id} className={styles.recyclerCard}>
-              <div className={styles.recyclerHeader}>
-                {recycler.riderImageUrl ? (
-                  <img
-                    src={recycler.riderImageUrl}
-                    alt={`${recycler.firstName} ${recycler.LastName}`}
-                    className={styles.avatar}
-                  />
-                ) : (
-                  <div className={styles.avatarPlaceholder}>
-                    {recycler.firstName?.charAt(0) || "?"}
-                    {recycler.LastName?.charAt(0) || ""}
+          <div className={styles.grid}>
+            {filteredTertiaryRecyclers.map((recycler) => (
+              <div key={recycler.id} className={styles.recyclerCard}>
+                <div className={styles.recyclerHeader}>
+                  {recycler.riderImageUrl ? (
+                    <img
+                      src={recycler.riderImageUrl}
+                      alt={`${recycler.firstName} ${recycler.LastName}`}
+                      className={styles.avatar}
+                    />
+                  ) : (
+                    <div className={styles.avatarPlaceholder}>
+                      {recycler.firstName?.charAt(0) || "?"}
+                      {recycler.LastName?.charAt(0) || ""}
+                    </div>
+                  )}
+                  <div>
+                    <h3>
+                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
+                    </h3>
+                    <p className={styles.recyclerType}>Tertiary Recycler</p>
+                  </div>
+                </div>
+
+                {recycler.wasteManagementInfo && (
+                  <div className={styles.companyInfo}>
+                    <p>
+                      <strong>Company:</strong>{" "}
+                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Location:</strong>{" "}
+                      {recycler.wasteManagementInfo.location || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Email:</strong> {recycler.email || "N/A"}
+                    </p>
                   </div>
                 )}
-                <div>
-                  <h3>
-                    {recycler.firstName || "Unknown"} {recycler.LastName || ""}
-                  </h3>
-                  <p className={styles.recyclerType}>Tertiary Recycler</p>
+
+                <div className={styles.recyclerActions}>
+                  <button
+                    className={styles.viewButton}
+                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
+                  >
+                    Details
+                  </button>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => {
+                      setSelectedItem(recycler);
+                      setModalType("editTertiary");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDelete("Recyclers", recycler.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
+            ))}
+          </div>
 
-              {recycler.wasteManagementInfo && (
-                <div className={styles.companyInfo}>
-                  <p>
-                    <strong>Company:</strong>{" "}
-                    {recycler.wasteManagementInfo.CompanyName || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Location:</strong>{" "}
-                    {recycler.wasteManagementInfo.location || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Email:</strong> {recycler.email || "N/A"}
-                  </p>
+          {filteredTertiaryRecyclers.length === 0 && (
+            <div className={styles.noResults}>No tertiary recyclers found.</div>
+          )}
+
+          {/* Modals */}
+          {modalType && (
+            <Modal
+              onClose={() => {
+                setModalType(null);
+                setSelectedItem(null);
+              }}
+            >
+              {(modalType === "editTertiary" || modalType === "addTertiary") && (
+                <UserForm
+                  type="recycler"
+                  initialData={modalType === "editTertiary" && selectedItem ? selectedItem : undefined}
+                  onSubmit={(data: any) => {
+                    if (modalType === "editTertiary" && selectedItem) {
+                      handleUpdate("Recyclers", selectedItem.id, data);
+                    } else {
+                      handleCreate("Recyclers", Date.now().toString(), data);
+                    }
+                  }}
+                  onCancel={() => {
+                    setModalType(null);
+                    setSelectedItem(null);
+                  }}
+                />
+              )}
+              {modalType === "recyclerDetails" && selectedItem && (
+                <div className={styles.detailsModal}>
+                  <h2>Tertiary Recycler Details</h2>
+                  <div className={styles.detailsContent}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Name:</span>
+                      <span>
+                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
+                      </span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Email:</span>
+                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Phone:</span>
+                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
+                    </div>
+                    {(selectedItem as Recycler).wasteManagementInfo && (
+                      <>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Company:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Location:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className={styles.formActions}>
+                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
+                  </div>
                 </div>
               )}
-
-              <div className={styles.recyclerActions}>
-                <button
-                  className={styles.viewButton}
-                  onClick={() => openDetailsModal(recycler, "recyclerDetails")}
-                >
-                  Details
-                </button>
-                <button
-                  className={styles.editButton}
-                  onClick={() => {
-                    setSelectedItem(recycler);
-                    setModalType("editTertiary");
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  className={styles.deleteButton}
-                  onClick={() => handleDelete("Recyclers", recycler.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
+            </Modal>
+          )}
         </div>
-
-        {filteredTertiaryRecyclers.length === 0 && (
-          <div className={styles.noResults}>No tertiary recyclers found.</div>
-        )}
-
-        {/* Modals */}
-        {modalType && (
-          <Modal
-            onClose={() => {
-              setModalType(null);
-              setSelectedItem(null);
-            }}
-          >
-            {(modalType === "editTertiary" || modalType === "addTertiary") && (
-              <UserForm
-                type="recycler"
-                initialData={
-                  modalType === "editTertiary" && selectedItem
-                    ? selectedItem
-                    : undefined
-                }
-                onSubmit={(data: any) =>
-                  handleUpdate(
-                    "Recyclers",
-                    modalType === "editTertiary" && selectedItem
-                      ? selectedItem.id
-                      : Date.now().toString(),
-                    data
-                  )
-                }
-              />
-            )}
-            {modalType === "recyclerDetails" && selectedItem && (
-              <div className={styles.detailsModal}>
-                <h2>Tertiary Recycler Details</h2>
-                <div className={styles.detailsContent}>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Name:</span>
-                    <span>
-                      {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
-                    </span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Email:</span>
-                    <span>{(selectedItem as Recycler).email || "N/A"}</span>
-                  </div>
-                  <div className={styles.detailRow}>
-                    <span className={styles.detailLabel}>Phone:</span>
-                    <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
-                  </div>
-                  {(selectedItem as Recycler).wasteManagementInfo && (
-                    <>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Company:</span>
-                        <span>
-                          {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
-                        </span>
-                      </div>
-                      <div className={styles.detailRow}>
-                        <span className={styles.detailLabel}>Location:</span>
-                        <span>
-                          {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </Modal>
-        )}
       </div>
     );
   }
