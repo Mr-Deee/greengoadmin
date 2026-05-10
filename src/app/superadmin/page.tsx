@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import styles from "./UserForm.module.css";
+import styles from "./superadmin.module.css";
 
 interface WasteManagementInfo {
   CompanyName?: string;
