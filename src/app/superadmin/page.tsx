@@ -10,9 +10,42 @@ import styles from "./superadmin.module.css";
 import { WasteManagementRequest, Recycler, Client } from "@/types";
 import Modal from "@/components/Modal";
 import UserForm from "@/components/UserForm";
-import RequestDetails from "@/components/RequestDetails";
+import Image from "next/image";
 
 type ViewMode = "clients" | "recyclers" | "secondary" | "tertiary" | null;
+
+// Define proper types for form data
+interface ClientFormData {
+  firstName?: string;
+  LastName?: string;
+  email?: string;
+  phoneNumber?: string;
+  location?: string;
+  SettlementType?: string;
+  gpsAddress?: string;
+  ghCardNo?: string;
+  dateOfBirth?: string;
+  [key: string]: string | undefined;
+}
+
+interface RecyclerFormData {
+  firstName?: string;
+  LastName?: string;
+  email?: string;
+  phone?: string;
+  phoneNumber?: string;
+  WMSTYPE?: string;
+  wmsType?: string;
+  wasteManagementInfo?: {
+    CompanyName?: string;
+    location?: string;
+    RecycleType?: string;
+    WasteCategory?: string | string[];
+    WasteClassification?: string | string[];
+    employees?: string;
+  };
+  [key: string]: string | object | undefined;
+}
 
 // Helper function to get recycler category safely
 const getRecyclerCategory = (recycler: Recycler): string => {
@@ -199,7 +232,7 @@ export default function SuperAdminPage() {
     }
   };
 
-  const handleCreate = async (collection: string, id: string, data: any) => {
+  const handleCreate = async (collection: string, id: string, data: ClientFormData | RecyclerFormData) => {
     try {
       await update(ref(db, `${collection}/${id}`), data);
       setModalType(null);
@@ -211,7 +244,7 @@ export default function SuperAdminPage() {
     }
   };
 
-  const handleUpdate = async (collection: string, id: string, updatedData: any) => {
+  const handleUpdate = async (collection: string, id: string, updatedData: ClientFormData | RecyclerFormData) => {
     try {
       await update(ref(db, `${collection}/${id}`), updatedData);
       setModalType(null);
@@ -414,7 +447,7 @@ export default function SuperAdminPage() {
                 <UserForm
                   type="client"
                   initialData={modalType === "editClient" && selectedItem ? selectedItem : undefined}
-                  onSubmit={(data: any) => {
+                  onSubmit={(data: ClientFormData) => {
                     if (modalType === "editClient" && selectedItem) {
                       handleUpdate("Clients", selectedItem.id, data);
                     } else {
@@ -514,10 +547,12 @@ export default function SuperAdminPage() {
               <div key={recycler.id} className={styles.recyclerCard}>
                 <div className={styles.recyclerHeader}>
                   {recycler.riderImageUrl ? (
-                    <img
+                    <Image
                       src={recycler.riderImageUrl}
                       alt={`${recycler.firstName} ${recycler.LastName}`}
                       className={styles.avatar}
+                      width={50}
+                      height={50}
                     />
                   ) : (
                     <div className={styles.avatarPlaceholder}>
@@ -594,7 +629,7 @@ export default function SuperAdminPage() {
                 <UserForm
                   type="recycler"
                   initialData={modalType === "editRecycler" && selectedItem ? selectedItem : undefined}
-                  onSubmit={(data: any) => {
+                  onSubmit={(data: RecyclerFormData) => {
                     if (modalType === "editRecycler" && selectedItem) {
                       handleUpdate("Recyclers", selectedItem.id, data);
                     } else {
@@ -718,10 +753,12 @@ export default function SuperAdminPage() {
               <div key={recycler.id} className={styles.recyclerCard}>
                 <div className={styles.recyclerHeader}>
                   {recycler.riderImageUrl ? (
-                    <img
+                    <Image
                       src={recycler.riderImageUrl}
                       alt={`${recycler.firstName} ${recycler.LastName}`}
                       className={styles.avatar}
+                      width={50}
+                      height={50}
                     />
                   ) : (
                     <div className={styles.avatarPlaceholder}>
@@ -796,7 +833,7 @@ export default function SuperAdminPage() {
                 <UserForm
                   type="recycler"
                   initialData={modalType === "editSecondary" && selectedItem ? selectedItem : undefined}
-                  onSubmit={(data: any) => {
+                  onSubmit={(data: RecyclerFormData) => {
                     if (modalType === "editSecondary" && selectedItem) {
                       handleUpdate("Recyclers", selectedItem.id, data);
                     } else {
@@ -904,10 +941,12 @@ export default function SuperAdminPage() {
               <div key={recycler.id} className={styles.recyclerCard}>
                 <div className={styles.recyclerHeader}>
                   {recycler.riderImageUrl ? (
-                    <img
+                    <Image
                       src={recycler.riderImageUrl}
                       alt={`${recycler.firstName} ${recycler.LastName}`}
                       className={styles.avatar}
+                      width={50}
+                      height={50}
                     />
                   ) : (
                     <div className={styles.avatarPlaceholder}>
@@ -982,7 +1021,7 @@ export default function SuperAdminPage() {
                 <UserForm
                   type="recycler"
                   initialData={modalType === "editTertiary" && selectedItem ? selectedItem : undefined}
-                  onSubmit={(data: any) => {
+                  onSubmit={(data: RecyclerFormData) => {
                     if (modalType === "editTertiary" && selectedItem) {
                       handleUpdate("Recyclers", selectedItem.id, data);
                     } else {
