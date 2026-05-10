@@ -38,27 +38,14 @@ interface FormData {
   wasteManagementInfo: WasteManagementInfo;
 }
 
-// Flexible type for initial data to match Firebase structure
 interface UserFormProps {
   type: "client" | "recycler";
-  initialData?: Record<string, unknown>;
-  onSubmit: (data: Record<string, unknown>) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  initialData?: any; // Accept any type for Firebase data
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onSubmit: (data: any) => void;
   onCancel?: () => void;
 }
-
-// Helper to safely get nested values
-const getNestedValue = (obj: Record<string, unknown>, path: string): string => {
-  const parts = path.split('.');
-  let current: unknown = obj;
-  for (const part of parts) {
-    if (current && typeof current === 'object' && part in current) {
-      current = (current as Record<string, unknown>)[part];
-    } else {
-      return '';
-    }
-  }
-  return typeof current === 'string' ? current : '';
-};
 
 export default function UserForm({ type, initialData, onSubmit, onCancel }: UserFormProps) {
   const [formData, setFormData] = useState<FormData>({
@@ -96,29 +83,29 @@ export default function UserForm({ type, initialData, onSubmit, onCancel }: User
   useEffect(() => {
     if (initialData) {
       setFormData({
-        firstName: (initialData.firstName as string) || (initialData.FirstName as string) || "",
-        LastName: (initialData.LastName as string) || "",
-        email: (initialData.email as string) || "",
-        phoneNumber: (initialData.phoneNumber as string) || (initialData.phone as string) || "",
-        location: (initialData.location as string) || "",
-        SettlementType: (initialData.SettlementType as string) || "",
-        gpsAddress: (initialData.gpsAddress as string) || "",
-        ghCardNo: (initialData.ghCardNo as string) || "",
-        dateOfBirth: (initialData.dateOfBirth as string) || "",
-        WMSTYPE: (initialData.WMSTYPE as string) || "",
-        WMSCATEGORY: (initialData.WMSCATEGORY as string) || (initialData.wmsCategory as string) || "",
+        firstName: initialData.firstName || initialData.FirstName || "",
+        LastName: initialData.LastName || "",
+        email: initialData.email || "",
+        phoneNumber: initialData.phoneNumber || initialData.phone || "",
+        location: initialData.location || "",
+        SettlementType: initialData.SettlementType || "",
+        gpsAddress: initialData.gpsAddress || "",
+        ghCardNo: initialData.ghCardNo || "",
+        dateOfBirth: initialData.dateOfBirth || "",
+        WMSTYPE: initialData.WMSTYPE || "",
+        WMSCATEGORY: initialData.WMSCATEGORY || initialData.wmsCategory || "",
         Password: "",
         wasteManagementInfo: {
-          CompanyName: getNestedValue(initialData, 'wasteManagementInfo.CompanyName'),
-          RecycleType: getNestedValue(initialData, 'wasteManagementInfo.RecycleType'),
-          location: getNestedValue(initialData, 'wasteManagementInfo.location'),
-          employees: getNestedValue(initialData, 'wasteManagementInfo.employees'),
-          ghMobileNumber: getNestedValue(initialData, 'wasteManagementInfo.ghMobileNumber'),
-          ghanaCardNumber: getNestedValue(initialData, 'wasteManagementInfo.ghanaCardNumber'),
-          gps: getNestedValue(initialData, 'wasteManagementInfo.gps'),
-          landmark: getNestedValue(initialData, 'wasteManagementInfo.landmark'),
-          WasteCategory: getNestedValue(initialData, 'wasteManagementInfo.WasteCategory'),
-          WasteClassification: getNestedValue(initialData, 'wasteManagementInfo.WasteClassification'),
+          CompanyName: initialData.wasteManagementInfo?.CompanyName || "",
+          RecycleType: initialData.wasteManagementInfo?.RecycleType || "",
+          location: initialData.wasteManagementInfo?.location || "",
+          employees: initialData.wasteManagementInfo?.employees || "",
+          ghMobileNumber: initialData.wasteManagementInfo?.ghMobileNumber || "",
+          ghanaCardNumber: initialData.wasteManagementInfo?.ghanaCardNumber || "",
+          gps: initialData.wasteManagementInfo?.gps || "",
+          landmark: initialData.wasteManagementInfo?.landmark || "",
+          WasteCategory: initialData.wasteManagementInfo?.WasteCategory || "",
+          WasteClassification: initialData.wasteManagementInfo?.WasteClassification || "",
         }
       });
     }
@@ -144,84 +131,26 @@ export default function UserForm({ type, initialData, onSubmit, onCancel }: User
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const submitData: Record<string, unknown> = {
-      firstName: formData.firstName,
-      LastName: formData.LastName,
-      email: formData.email,
-      phoneNumber: formData.phoneNumber,
-      location: formData.location,
-    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const submitData: any = { ...formData };
     
-    // Add client-specific fields
-    if (type === "client") {
-      if (formData.SettlementType) submitData.SettlementType = formData.SettlementType;
-      if (formData.gpsAddress) submitData.gpsAddress = formData.gpsAddress;
-      if (formData.ghCardNo) submitData.ghCardNo = formData.ghCardNo;
-      if (formData.dateOfBirth) submitData.dateOfBirth = formData.dateOfBirth;
+    // Remove password if it's empty
+    if (!submitData.Password) {
+      delete submitData.Password;
     }
     
-    // Add recycler-specific fields
-    if (type === "recycler") {
-      if (formData.WMSTYPE) submitData.WMSTYPE = formData.WMSTYPE;
-      if (formData.WMSCATEGORY) submitData.WMSCATEGORY = formData.WMSCATEGORY;
-      if (formData.Password) submitData.Password = formData.Password;
-      
-      // Add waste management info if any field is filled
-      const wasteManagementInfo: Record<string, unknown> = {};
-      let hasWasteManagementInfo = false;
-      
-      if (formData.wasteManagementInfo.CompanyName && formData.wasteManagementInfo.CompanyName.trim()) {
-        wasteManagementInfo.CompanyName = formData.wasteManagementInfo.CompanyName;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.RecycleType && formData.wasteManagementInfo.RecycleType.trim()) {
-        wasteManagementInfo.RecycleType = formData.wasteManagementInfo.RecycleType;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.location && formData.wasteManagementInfo.location.trim()) {
-        wasteManagementInfo.location = formData.wasteManagementInfo.location;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.employees && formData.wasteManagementInfo.employees.trim()) {
-        wasteManagementInfo.employees = formData.wasteManagementInfo.employees;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.ghMobileNumber && formData.wasteManagementInfo.ghMobileNumber.trim()) {
-        wasteManagementInfo.ghMobileNumber = formData.wasteManagementInfo.ghMobileNumber;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.ghanaCardNumber && formData.wasteManagementInfo.ghanaCardNumber.trim()) {
-        wasteManagementInfo.ghanaCardNumber = formData.wasteManagementInfo.ghanaCardNumber;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.gps && formData.wasteManagementInfo.gps.trim()) {
-        wasteManagementInfo.gps = formData.wasteManagementInfo.gps;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.landmark && formData.wasteManagementInfo.landmark.trim()) {
-        wasteManagementInfo.landmark = formData.wasteManagementInfo.landmark;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.WasteCategory && formData.wasteManagementInfo.WasteCategory.trim()) {
-        wasteManagementInfo.WasteCategory = formData.wasteManagementInfo.WasteCategory;
-        hasWasteManagementInfo = true;
-      }
-      if (formData.wasteManagementInfo.WasteClassification && formData.wasteManagementInfo.WasteClassification.trim()) {
-        wasteManagementInfo.WasteClassification = formData.wasteManagementInfo.WasteClassification;
-        hasWasteManagementInfo = true;
-      }
-      
-      if (hasWasteManagementInfo) {
-        submitData.wasteManagementInfo = wasteManagementInfo;
+    // Clean up wasteManagementInfo - remove empty fields
+    if (submitData.wasteManagementInfo) {
+      Object.keys(submitData.wasteManagementInfo).forEach(key => {
+        if (!submitData.wasteManagementInfo[key]) {
+          delete submitData.wasteManagementInfo[key];
+        }
+      });
+      // If wasteManagementInfo is empty, remove it
+      if (Object.keys(submitData.wasteManagementInfo).length === 0) {
+        delete submitData.wasteManagementInfo;
       }
     }
-    
-    // Remove empty fields
-    Object.keys(submitData).forEach(key => {
-      if (submitData[key] === "" || submitData[key] === undefined || submitData[key] === null) {
-        delete submitData[key];
-      }
-    });
     
     onSubmit(submitData);
   };
@@ -285,7 +214,7 @@ export default function UserForm({ type, initialData, onSubmit, onCancel }: User
               onChange={handleChange}
               required
               className={styles.input}
-              placeholder="Enter phone number (e.g., 024XXXXXXX)"
+              placeholder="Enter phone number"
             />
           </div>
 

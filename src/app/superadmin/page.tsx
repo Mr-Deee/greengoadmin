@@ -1,490 +1,1054 @@
-// components/UserForm.tsx
+// app/superadmin/page.tsx
 "use client";
 
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { ref, get, onValue, remove, update } from "firebase/database";
 import styles from "./superadmin.module.css";
+import { WasteManagementRequest, Recycler, Client } from "@/types";
+import Modal from "@/components/Modal";
+import UserForm from "@/components/UserForm";
+import Image from "next/image";
 
-interface WasteManagementInfo {
-  CompanyName?: string;
-  RecycleType?: string;
-  location?: string;
-  employees?: string;
-  ghMobileNumber?: string;
-  ghanaCardNumber?: string;
-  gps?: string;
-  landmark?: string;
-  WasteCategory?: string;
-  WasteClassification?: string;
-}
+type ViewMode = "clients" | "recyclers" | "secondary" | "tertiary" | null;
 
-interface FormData {
-  // Common fields
-  firstName: string;
-  LastName: string;
-  email: string;
-  phoneNumber: string;
-  location: string;
-  
-  // Client specific
-  SettlementType: string;
-  gpsAddress: string;
-  ghCardNo: string;
-  dateOfBirth: string;
-  
-  // Recycler specific
-  WMSTYPE: string;
-  WMSCATEGORY: string;
-  Password?: string;
-  wasteManagementInfo: WasteManagementInfo;
-}
+// Helper function to get recycler category safely
+const getRecyclerCategory = (recycler: Recycler): string => {
+  if (recycler.WMSCATEGORY) return recycler.WMSCATEGORY;
+  if (recycler.wmsCategory) return recycler.wmsCategory;
+  if (recycler.wasteManagementInfo?.RecycleType) return recycler.wasteManagementInfo.RecycleType;
+  return "Primary";
+};
 
-// Use a more flexible type that matches what SuperAdmin passes
-interface UserFormProps {
-  type: "client" | "recycler";
-  initialData?: any; // Keep as any to match Firebase data structure
-  onSubmit: (data: any) => void; // Keep as any for flexibility with Firebase
-  onCancel?: () => void;
-}
+// Helper function to get recycler phone safely
+const getRecyclerPhone = (recycler: Recycler): string => {
+  return recycler.phone || recycler.phoneNumber || "N/A";
+};
 
-export default function UserForm({ type, initialData, onSubmit, onCancel }: UserFormProps) {
-  const [formData, setFormData] = useState<FormData>({
-    // Common fields
-    firstName: "",
-    LastName: "",
-    email: "",
-    phoneNumber: "",
-    location: "",
-    
-    // Client specific
-    SettlementType: "",
-    gpsAddress: "",
-    ghCardNo: "",
-    dateOfBirth: "",
-    
-    // Recycler specific
-    WMSTYPE: "",
-    WMSCATEGORY: "",
-    Password: "",
-    wasteManagementInfo: {
-      CompanyName: "",
-      RecycleType: "",
-      location: "",
-      employees: "",
-      ghMobileNumber: "",
-      ghanaCardNumber: "",
-      gps: "",
-      landmark: "",
-      WasteCategory: "",
-      WasteClassification: "",
-    }
-  });
+// Helper function to get waste category safely
+const getWasteCategory = (recycler: Recycler): string => {
+  const wasteCategory = recycler.wasteManagementInfo?.WasteCategory;
+  if (!wasteCategory) return "N/A";
+  if (Array.isArray(wasteCategory)) return wasteCategory.join(", ");
+  return wasteCategory;
+};
 
+// Helper function to get waste classification safely
+const getWasteClassification = (recycler: Recycler): string => {
+  const classification = recycler.wasteManagementInfo?.WasteClassification;
+  if (!classification) return "N/A";
+  if (Array.isArray(classification)) return classification.join(", ");
+  return classification;
+};
+
+export default function SuperAdminPage() {
+  const router = useRouter();
+  const [requests, setRequests] = useState<WasteManagementRequest[]>([]);
+  const [recyclers, setRecyclers] = useState<Recycler[]>([]);
+  const [secondaryRecyclers, setSecondaryRecyclers] = useState<Recycler[]>([]);
+  const [tertiaryRecyclers, setTertiaryRecyclers] = useState<Recycler[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedItem, setSelectedItem] = useState<
+    WasteManagementRequest | Recycler | Client | null
+  >(null);
+  const [modalType, setModalType] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>(null);
+
+  // Authentication check
   useEffect(() => {
-    if (initialData) {
-      setFormData({
-        firstName: initialData.firstName || initialData.FirstName || "",
-        LastName: initialData.LastName || "",
-        email: initialData.email || "",
-        phoneNumber: initialData.phoneNumber || initialData.phone || "",
-        location: initialData.location || "",
-        SettlementType: initialData.SettlementType || "",
-        gpsAddress: initialData.gpsAddress || "",
-        ghCardNo: initialData.ghCardNo || "",
-        dateOfBirth: initialData.dateOfBirth || "",
-        WMSTYPE: initialData.WMSTYPE || "",
-        WMSCATEGORY: initialData.WMSCATEGORY || initialData.wmsCategory || "",
-        Password: "",
-        wasteManagementInfo: {
-          CompanyName: initialData.wasteManagementInfo?.CompanyName || "",
-          RecycleType: initialData.wasteManagementInfo?.RecycleType || "",
-          location: initialData.wasteManagementInfo?.location || "",
-          employees: initialData.wasteManagementInfo?.employees || "",
-          ghMobileNumber: initialData.wasteManagementInfo?.ghMobileNumber || "",
-          ghanaCardNumber: initialData.wasteManagementInfo?.ghanaCardNumber || "",
-          gps: initialData.wasteManagementInfo?.gps || "",
-          landmark: initialData.wasteManagementInfo?.landmark || "",
-          WasteCategory: initialData.wasteManagementInfo?.WasteCategory || "",
-          WasteClassification: initialData.wasteManagementInfo?.WasteClassification || "",
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const snapshot = await get(ref(db, `Admin/${user.uid}`));
+        if (snapshot.val()?.role !== "super_admin") {
+          router.push("/unauthorized");
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("Error checking admin role:", error);
+        router.push("/login");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  // Data fetching
+  useEffect(() => {
+    const requestsRef = ref(db, "ClientRequest");
+    const recyclersRef = ref(db, "Recyclers");
+    const clientsRef = ref(db, "Clients");
+
+    const unsubscribeRequests = onValue(requestsRef, (snapshot) => {
+      const data = snapshot.val();
+      const requestsArray: WasteManagementRequest[] = data
+        ? Object.keys(data).map((key) => ({
+            id: key,
+            ...data[key],
+          }))
+        : [];
+      setRequests(requestsArray);
+    });
+
+    const unsubscribeRecyclers = onValue(recyclersRef, (snapshot) => {
+      const data = snapshot.val();
+      const recyclersArray: Recycler[] = data
+        ? Object.keys(data).map((key) => ({
+            id: key,
+            ...data[key],
+          }))
+        : [];
+
+      // Categorize recyclers by their category
+      const primary: Recycler[] = [];
+      const secondary: Recycler[] = [];
+      const tertiary: Recycler[] = [];
+
+      recyclersArray.forEach((recycler) => {
+        const category = getRecyclerCategory(recycler);
+        
+        if (category === "Secondary") {
+          secondary.push(recycler);
+        } else if (category === "Tertiary") {
+          tertiary.push(recycler);
+        } else {
+          primary.push(recycler);
         }
       });
-    }
-  }, [initialData]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    
-    if (name.includes(".")) {
-      const [parent, child] = name.split(".");
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...(prev[parent as keyof FormData] as WasteManagementInfo),
-          [child]: value
-        }
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
-  };
+      setRecyclers(primary);
+      setSecondaryRecyclers(secondary);
+      setTertiaryRecyclers(tertiary);
+    });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const submitData: any = { ...formData };
-    
-    // Remove password if it's empty
-    if (!submitData.Password) {
-      delete submitData.Password;
-    }
-    
-    // Clean up wasteManagementInfo - remove empty fields
-    if (submitData.wasteManagementInfo) {
-      Object.keys(submitData.wasteManagementInfo).forEach(key => {
-        if (!submitData.wasteManagementInfo[key]) {
-          delete submitData.wasteManagementInfo[key];
-        }
-      });
-      // If wasteManagementInfo is empty, remove it
-      if (Object.keys(submitData.wasteManagementInfo).length === 0) {
-        delete submitData.wasteManagementInfo;
+    const unsubscribeClients = onValue(clientsRef, (snapshot) => {
+      const data = snapshot.val();
+      const clientsArray: Client[] = data
+        ? Object.keys(data).map((key) => ({
+            id: key,
+            ...data[key],
+          }))
+        : [];
+      setClients(clientsArray);
+    });
+
+    return () => {
+      unsubscribeRequests();
+      unsubscribeRecyclers();
+      unsubscribeClients();
+    };
+  }, []);
+
+  // Filter functions
+  const filteredClients = clients.filter(
+    (client) =>
+      client.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.phoneNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredRecyclers = recyclers.filter(
+    (recycler) =>
+      recycler.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(
+        searchTerm.toLowerCase()
+      )
+  );
+
+  const filteredSecondaryRecyclers = secondaryRecyclers.filter(
+    (recycler) =>
+      recycler.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(
+        searchTerm.toLowerCase()
+      )
+  );
+
+  const filteredTertiaryRecyclers = tertiaryRecyclers.filter(
+    (recycler) =>
+      recycler.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(
+        searchTerm.toLowerCase()
+      )
+  );
+
+  const handleDelete = async (collection: string, id: string) => {
+    if (window.confirm("Are you sure you want to delete this item?")) {
+      try {
+        await remove(ref(db, `${collection}/${id}`));
+        alert("Item deleted successfully!");
+      } catch (error) {
+        console.error("Error deleting item:", error);
+        alert("Failed to delete item. Please try again.");
       }
     }
-    
-    onSubmit(submitData);
   };
 
-  return (
-    <form onSubmit={handleSubmit} className={styles.form}>
-      <h2 className={styles.title}>
-        {initialData ? "Edit" : "Add"} {type === "client" ? "Client" : "Recycler"}
-      </h2>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleCreate = async (collection: string, id: string, data: any) => {
+    try {
+      await update(ref(db, `${collection}/${id}`), data);
+      setModalType(null);
+      setSelectedItem(null);
+      alert("Item created successfully!");
+    } catch (error) {
+      console.error("Error creating item:", error);
+      alert("Failed to create item. Please try again.");
+    }
+  };
 
-      <div className={styles.formGrid}>
-        {/* Personal Information */}
-        <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Personal Information</h3>
-          
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>First Name *</label>
-            <input
-              type="text"
-              name="firstName"
-              value={formData.firstName}
-              onChange={handleChange}
-              required
-              className={styles.input}
-              placeholder="Enter first name"
-            />
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleUpdate = async (collection: string, id: string, updatedData: any) => {
+    try {
+      await update(ref(db, `${collection}/${id}`), updatedData);
+      setModalType(null);
+      setSelectedItem(null);
+      alert("Item updated successfully!");
+    } catch (error) {
+      console.error("Error updating item:", error);
+      alert("Failed to update item. Please try again.");
+    }
+  };
+
+  const openDetailsModal = (
+    item: WasteManagementRequest | Recycler | Client,
+    type: string
+  ) => {
+    setSelectedItem(item);
+    setModalType(type);
+  };
+
+  const closeView = () => {
+    setViewMode(null);
+    setSearchTerm("");
+  };
+
+  if (loading) {
+    return <div className={styles.loading}>Loading dashboard...</div>;
+  }
+
+  // Render category boxes (main screen)
+  if (viewMode === null) {
+    return (
+      <div className={styles.dashboard}>
+        <div className={styles.glassContainer}>
+          <h1 className={styles.title}>Waste Management Dashboard</h1>
+
+          {/* Category Boxes */}
+          <div className={styles.categoryGrid}>
+            <div
+              className={styles.categoryCard}
+              onClick={() => setViewMode("clients")}
+            >
+              <div className={styles.categoryIcon}>👥</div>
+              <h3>Clients</h3>
+              <p className={styles.categoryCount}>{clients.length} registered</p>
+            </div>
+
+            <div
+              className={styles.categoryCard}
+              onClick={() => setViewMode("recyclers")}
+            >
+              <div className={styles.categoryIcon}>♻️</div>
+              <h3>Primary Recyclers</h3>
+              <p className={styles.categoryCount}>{recyclers.length} active</p>
+            </div>
+
+            <div
+              className={styles.categoryCard}
+              onClick={() => setViewMode("secondary")}
+            >
+              <div className={styles.categoryIcon}>🏭</div>
+              <h3>Secondary Recyclers</h3>
+              <p className={styles.categoryCount}>
+                {secondaryRecyclers.length} active
+              </p>
+            </div>
+
+            <div
+              className={styles.categoryCard}
+              onClick={() => setViewMode("tertiary")}
+            >
+              <div className={styles.categoryIcon}>🔧</div>
+              <h3>Tertiary Recyclers</h3>
+              <p className={styles.categoryCount}>
+                {tertiaryRecyclers.length} active
+              </p>
+            </div>
           </div>
 
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>Last Name *</label>
-            <input
-              type="text"
-              name="LastName"
-              value={formData.LastName}
-              onChange={handleChange}
-              required
-              className={styles.input}
-              placeholder="Enter last name"
-            />
-          </div>
-
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>Email *</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              className={styles.input}
-              placeholder="Enter email address"
-            />
-          </div>
-
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>Phone Number *</label>
-            <input
-              type="tel"
-              name="phoneNumber"
-              value={formData.phoneNumber}
-              onChange={handleChange}
-              required
-              className={styles.input}
-              placeholder="Enter phone number"
-            />
-          </div>
-
-          <div className={styles.fieldGroup}>
-            <label className={styles.label}>Location</label>
-            <input
-              type="text"
-              name="location"
-              value={formData.location}
-              onChange={handleChange}
-              className={styles.input}
-              placeholder="Enter location"
-            />
+          {/* Quick Stats */}
+          <div className={styles.overviewCards}>
+            <div className={styles.card}>
+              <h3>Total Requests</h3>
+              <p>{requests.length}</p>
+            </div>
+            <div className={styles.card}>
+              <h3>Total Recyclers</h3>
+              <p>{recyclers.length + secondaryRecyclers.length + tertiaryRecyclers.length}</p>
+            </div>
+            <div className={styles.card}>
+              <h3>Registered Clients</h3>
+              <p>{clients.length}</p>
+            </div>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        {/* Client Specific Fields */}
-        {type === "client" && (
-          <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Client Details</h3>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.label}>Settlement Type</label>
-              <select
-                name="SettlementType"
-                value={formData.SettlementType}
-                onChange={handleChange}
-                className={styles.select}
-              >
-                <option value="">Select Type</option>
-                <option value="Household">Household</option>
-                <option value="Residential">Residential</option>
-                <option value="Commercial">Commercial</option>
-                <option value="Organizational">Organizational</option>
-              </select>
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.label}>GPS Address</label>
-              <input
-                type="text"
-                name="gpsAddress"
-                value={formData.gpsAddress}
-                onChange={handleChange}
-                className={styles.input}
-                placeholder="Enter GPS address"
-              />
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.label}>Ghana Card Number</label>
-              <input
-                type="text"
-                name="ghCardNo"
-                value={formData.ghCardNo}
-                onChange={handleChange}
-                className={styles.input}
-                placeholder="Enter Ghana card number"
-              />
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.label}>Date of Birth</label>
-              <input
-                type="date"
-                name="dateOfBirth"
-                value={formData.dateOfBirth}
-                onChange={handleChange}
-                className={styles.input}
-              />
-            </div>
+  // Render Clients List
+  if (viewMode === "clients") {
+    return (
+      <div className={styles.dashboard}>
+        <div className={styles.glassContainer}>
+          <div className={styles.viewHeader}>
+            <button className={styles.backButton} onClick={closeView}>
+              ← Back to Dashboard
+            </button>
+            <h2>Clients Management</h2>
+            <button
+              className={styles.addButton}
+              onClick={() => {
+                setSelectedItem(null);
+                setModalType("addClient");
+              }}
+            >
+              + Add Client
+            </button>
           </div>
-        )}
 
-        {/* Recycler Specific Fields */}
-        {type === "recycler" && (
-          <>
-            <div className={styles.section}>
-              <h3 className={styles.sectionTitle}>Recycler Information</h3>
+          <div className={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="Search clients by name, email, or phone..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>WMS Type</label>
-                <select
-                  name="WMSTYPE"
-                  value={formData.WMSTYPE}
-                  onChange={handleChange}
-                  className={styles.select}
-                >
-                  <option value="">Select Type</option>
-                  <option value="Recycle">Recycle</option>
-                  <option value="WMS">WMS</option>
-                </select>
+          <div className={styles.grid}>
+            {filteredClients.map((client) => (
+              <div key={client.id} className={styles.recyclerCard}>
+                <div className={styles.recyclerHeader}>
+                  <div className={styles.avatarPlaceholder}>
+                    {client.firstName?.charAt(0) || "?"}
+                    {client.LastName?.charAt(0) || ""}
+                  </div>
+                  <div>
+                    <h3>
+                      {client.firstName || "Unknown"} {client.LastName || ""}
+                    </h3>
+                    <p className={styles.recyclerType}>
+                      {client.SettlementType || "Client"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={styles.companyInfo}>
+                  <p>
+                    <strong>Email:</strong> {client.email || "N/A"}
+                  </p>
+                  <p>
+                    <strong>Phone:</strong> {client.phoneNumber || "N/A"}
+                  </p>
+                  <p>
+                    <strong>Location:</strong> {client.location || "N/A"}
+                  </p>
+                </div>
+
+                <div className={styles.recyclerActions}>
+                  <button
+                    className={styles.viewButton}
+                    onClick={() => openDetailsModal(client, "clientDetails")}
+                  >
+                    Details
+                  </button>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => {
+                      setSelectedItem(client);
+                      setModalType("editClient");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDelete("Clients", client.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
+            ))}
+          </div>
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Category</label>
-                <select
-                  name="WMSCATEGORY"
-                  value={formData.WMSCATEGORY}
-                  onChange={handleChange}
-                  className={styles.select}
-                >
-                  <option value="">Select Category</option>
-                  <option value="Primary">Primary</option>
-                  <option value="Secondary">Secondary</option>
-                  <option value="Tertiary">Tertiary</option>
-                </select>
-              </div>
+          {filteredClients.length === 0 && (
+            <div className={styles.noResults}>No clients found.</div>
+          )}
 
-              {!initialData && (
-                <div className={styles.fieldGroup}>
-                  <label className={styles.label}>Password</label>
-                  <input
-                    type="password"
-                    name="Password"
-                    value={formData.Password || ""}
-                    onChange={handleChange}
-                    className={styles.input}
-                    placeholder="Enter password (optional)"
-                  />
+          {/* Modals */}
+          {modalType && (
+            <Modal
+              onClose={() => {
+                setModalType(null);
+                setSelectedItem(null);
+              }}
+            >
+              {(modalType === "editClient" || modalType === "addClient") && (
+                <UserForm
+                  type="client"
+                  initialData={modalType === "editClient" && selectedItem ? selectedItem : undefined}
+                  onSubmit={(data) => {
+                    if (modalType === "editClient" && selectedItem) {
+                      handleUpdate("Clients", selectedItem.id, data);
+                    } else {
+                      handleCreate("Clients", Date.now().toString(), data);
+                    }
+                  }}
+                  onCancel={() => {
+                    setModalType(null);
+                    setSelectedItem(null);
+                  }}
+                />
+              )}
+              {modalType === "clientDetails" && selectedItem && (
+                <div className={styles.detailsModal}>
+                  <h2>Client Details</h2>
+                  <div className={styles.detailsContent}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Name:</span>
+                      <span>
+                        {(selectedItem as Client).firstName || "N/A"} {(selectedItem as Client).LastName || ""}
+                      </span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Email:</span>
+                      <span>{(selectedItem as Client).email || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Phone:</span>
+                      <span>{(selectedItem as Client).phoneNumber || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Location:</span>
+                      <span>{(selectedItem as Client).location || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Settlement Type:</span>
+                      <span>{(selectedItem as Client).SettlementType || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>GPS Address:</span>
+                      <span>{(selectedItem as Client).gpsAddress || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>GH Card No:</span>
+                      <span>{(selectedItem as Client).ghCardNo || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Date of Birth:</span>
+                      <span>{(selectedItem as Client).dateOfBirth || "N/A"}</span>
+                    </div>
+                  </div>
+                  <div className={styles.formActions}>
+                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
+                  </div>
                 </div>
               )}
-            </div>
-
-            <div className={styles.section}>
-              <h3 className={styles.sectionTitle}>Company Information</h3>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Company Name</label>
-                <input
-                  type="text"
-                  name="wasteManagementInfo.CompanyName"
-                  value={formData.wasteManagementInfo.CompanyName}
-                  onChange={handleChange}
-                  className={styles.input}
-                  placeholder="Enter company name"
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Recycle Type</label>
-                <select
-                  name="wasteManagementInfo.RecycleType"
-                  value={formData.wasteManagementInfo.RecycleType}
-                  onChange={handleChange}
-                  className={styles.select}
-                >
-                  <option value="">Select Recycle Type</option>
-                  <option value="Primary">Primary</option>
-                  <option value="Secondary">Secondary</option>
-                  <option value="Tertiary">Tertiary</option>
-                </select>
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Company Location</label>
-                <input
-                  type="text"
-                  name="wasteManagementInfo.location"
-                  value={formData.wasteManagementInfo.location}
-                  onChange={handleChange}
-                  className={styles.input}
-                  placeholder="Enter company location"
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Number of Employees</label>
-                <input
-                  type="text"
-                  name="wasteManagementInfo.employees"
-                  value={formData.wasteManagementInfo.employees}
-                  onChange={handleChange}
-                  className={styles.input}
-                  placeholder="Enter number of employees"
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Company Phone</label>
-                <input
-                  type="tel"
-                  name="wasteManagementInfo.ghMobileNumber"
-                  value={formData.wasteManagementInfo.ghMobileNumber}
-                  onChange={handleChange}
-                  className={styles.input}
-                  placeholder="Enter company phone"
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Company Ghana Card</label>
-                <input
-                  type="text"
-                  name="wasteManagementInfo.ghanaCardNumber"
-                  value={formData.wasteManagementInfo.ghanaCardNumber}
-                  onChange={handleChange}
-                  className={styles.input}
-                  placeholder="Enter company Ghana card"
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>GPS Address</label>
-                <input
-                  type="text"
-                  name="wasteManagementInfo.gps"
-                  value={formData.wasteManagementInfo.gps}
-                  onChange={handleChange}
-                  className={styles.input}
-                  placeholder="Enter GPS address"
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Landmark</label>
-                <input
-                  type="text"
-                  name="wasteManagementInfo.landmark"
-                  value={formData.wasteManagementInfo.landmark}
-                  onChange={handleChange}
-                  className={styles.input}
-                  placeholder="Enter landmark"
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Waste Category</label>
-                <select
-                  name="wasteManagementInfo.WasteCategory"
-                  value={formData.wasteManagementInfo.WasteCategory}
-                  onChange={handleChange}
-                  className={styles.select}
-                >
-                  <option value="">Select Waste Category</option>
-                  <option value="Plastic">Plastic</option>
-                  <option value="Glass">Glass</option>
-                  <option value="Metal">Metal</option>
-                  <option value="Paper">Paper</option>
-                  <option value="Organic">Organic</option>
-                  <option value="Electronic">Electronic</option>
-                  <option value="General">General</option>
-                </select>
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.label}>Waste Classification</label>
-                <select
-                  name="wasteManagementInfo.WasteClassification"
-                  value={formData.wasteManagementInfo.WasteClassification}
-                  onChange={handleChange}
-                  className={styles.select}
-                >
-                  <option value="">Select Waste Classification</option>
-                  <option value="G1 - Not Clean">G1 - Not Clean (From dump sites)</option>
-                  <option value="G2 - Partially Clean">G2 - Partially Clean (From streets)</option>
-                  <option value="G3 - Very Clean">G3 - Very Clean (From homes/orgs)</option>
-                </select>
-              </div>
-            </div>
-          </>
-        )}
+            </Modal>
+          )}
+        </div>
       </div>
+    );
+  }
 
-      <div className={styles.formActions}>
-        <button type="button" onClick={onCancel} className={styles.cancelButton}>
-          Cancel
-        </button>
-        <button type="submit" className={styles.submitButton}>
-          {initialData ? "Update" : "Create"}
-        </button>
+  // Render Recyclers (Primary)
+  if (viewMode === "recyclers") {
+    return (
+      <div className={styles.dashboard}>
+        <div className={styles.glassContainer}>
+          <div className={styles.viewHeader}>
+            <button className={styles.backButton} onClick={closeView}>
+              ← Back to Dashboard
+            </button>
+            <h2>Primary Recyclers Management</h2>
+            <button
+              className={styles.addButton}
+              onClick={() => {
+                setSelectedItem(null);
+                setModalType("addRecycler");
+              }}
+            >
+              + Add Recycler
+            </button>
+          </div>
+
+          <div className={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="Search recyclers by name, email, or company..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className={styles.grid}>
+            {filteredRecyclers.map((recycler) => (
+              <div key={recycler.id} className={styles.recyclerCard}>
+                <div className={styles.recyclerHeader}>
+                  {recycler.riderImageUrl ? (
+                    <Image
+                      src={recycler.riderImageUrl}
+                      alt={`${recycler.firstName} ${recycler.LastName}`}
+                      className={styles.avatar}
+                      width={50}
+                      height={50}
+                    />
+                  ) : (
+                    <div className={styles.avatarPlaceholder}>
+                      {recycler.firstName?.charAt(0) || "?"}
+                      {recycler.LastName?.charAt(0) || ""}
+                    </div>
+                  )}
+                  <div>
+                    <h3>
+                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
+                    </h3>
+                    <p className={styles.recyclerType}>
+                      {recycler.WMSTYPE || "Primary Recycler"}
+                    </p>
+                  </div>
+                </div>
+
+                {recycler.wasteManagementInfo && (
+                  <div className={styles.companyInfo}>
+                    <p>
+                      <strong>Company:</strong>{" "}
+                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Location:</strong>{" "}
+                      {recycler.wasteManagementInfo.location || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Email:</strong> {recycler.email || "N/A"}
+                    </p>
+                  </div>
+                )}
+
+                <div className={styles.recyclerActions}>
+                  <button
+                    className={styles.viewButton}
+                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
+                  >
+                    Details
+                  </button>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => {
+                      setSelectedItem(recycler);
+                      setModalType("editRecycler");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDelete("Recyclers", recycler.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredRecyclers.length === 0 && (
+            <div className={styles.noResults}>No primary recyclers found.</div>
+          )}
+
+          {/* Modals */}
+          {modalType && (
+            <Modal
+              onClose={() => {
+                setModalType(null);
+                setSelectedItem(null);
+              }}
+            >
+              {(modalType === "editRecycler" || modalType === "addRecycler") && (
+                <UserForm
+                  type="recycler"
+                  initialData={modalType === "editRecycler" && selectedItem ? selectedItem : undefined}
+                  onSubmit={(data) => {
+                    if (modalType === "editRecycler" && selectedItem) {
+                      handleUpdate("Recyclers", selectedItem.id, data);
+                    } else {
+                      handleCreate("Recyclers", Date.now().toString(), data);
+                    }
+                  }}
+                  onCancel={() => {
+                    setModalType(null);
+                    setSelectedItem(null);
+                  }}
+                />
+              )}
+              {modalType === "recyclerDetails" && selectedItem && (
+                <div className={styles.detailsModal}>
+                  <h2>Recycler Details</h2>
+                  <div className={styles.detailsContent}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Name:</span>
+                      <span>
+                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
+                      </span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Email:</span>
+                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Phone:</span>
+                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Category:</span>
+                      <span>{getRecyclerCategory(selectedItem as Recycler)}</span>
+                    </div>
+                    {(selectedItem as Recycler).wasteManagementInfo && (
+                      <>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Company:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Location:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Recycle Type:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.RecycleType || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Waste Category:</span>
+                          <span>
+                            {getWasteCategory(selectedItem as Recycler)}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Waste Classification:</span>
+                          <span>
+                            {getWasteClassification(selectedItem as Recycler)}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Employees:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.employees || "N/A"}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className={styles.formActions}>
+                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
+                  </div>
+                </div>
+              )}
+            </Modal>
+          )}
+        </div>
       </div>
-    </form>
-  );
+    );
+  }
+
+  // Render Secondary Recyclers
+  if (viewMode === "secondary") {
+    return (
+      <div className={styles.dashboard}>
+        <div className={styles.glassContainer}>
+          <div className={styles.viewHeader}>
+            <button className={styles.backButton} onClick={closeView}>
+              ← Back to Dashboard
+            </button>
+            <h2>Secondary Recyclers Management</h2>
+            <button
+              className={styles.addButton}
+              onClick={() => {
+                setSelectedItem(null);
+                setModalType("addSecondary");
+              }}
+            >
+              + Add Secondary Recycler
+            </button>
+          </div>
+
+          <div className={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="Search secondary recyclers..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className={styles.grid}>
+            {filteredSecondaryRecyclers.map((recycler) => (
+              <div key={recycler.id} className={styles.recyclerCard}>
+                <div className={styles.recyclerHeader}>
+                  {recycler.riderImageUrl ? (
+                    <Image
+                      src={recycler.riderImageUrl}
+                      alt={`${recycler.firstName} ${recycler.LastName}`}
+                      className={styles.avatar}
+                      width={50}
+                      height={50}
+                    />
+                  ) : (
+                    <div className={styles.avatarPlaceholder}>
+                      {recycler.firstName?.charAt(0) || "?"}
+                      {recycler.LastName?.charAt(0) || ""}
+                    </div>
+                  )}
+                  <div>
+                    <h3>
+                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
+                    </h3>
+                    <p className={styles.recyclerType}>Secondary Recycler</p>
+                  </div>
+                </div>
+
+                {recycler.wasteManagementInfo && (
+                  <div className={styles.companyInfo}>
+                    <p>
+                      <strong>Company:</strong>{" "}
+                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Location:</strong>{" "}
+                      {recycler.wasteManagementInfo.location || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Email:</strong> {recycler.email || "N/A"}
+                    </p>
+                  </div>
+                )}
+
+                <div className={styles.recyclerActions}>
+                  <button
+                    className={styles.viewButton}
+                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
+                  >
+                    Details
+                  </button>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => {
+                      setSelectedItem(recycler);
+                      setModalType("editSecondary");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDelete("Recyclers", recycler.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredSecondaryRecyclers.length === 0 && (
+            <div className={styles.noResults}>No secondary recyclers found.</div>
+          )}
+
+          {/* Modals */}
+          {modalType && (
+            <Modal
+              onClose={() => {
+                setModalType(null);
+                setSelectedItem(null);
+              }}
+            >
+              {(modalType === "editSecondary" || modalType === "addSecondary") && (
+                <UserForm
+                  type="recycler"
+                  initialData={modalType === "editSecondary" && selectedItem ? selectedItem : undefined}
+                  onSubmit={(data) => {
+                    if (modalType === "editSecondary" && selectedItem) {
+                      handleUpdate("Recyclers", selectedItem.id, data);
+                    } else {
+                      handleCreate("Recyclers", Date.now().toString(), data);
+                    }
+                  }}
+                  onCancel={() => {
+                    setModalType(null);
+                    setSelectedItem(null);
+                  }}
+                />
+              )}
+              {modalType === "recyclerDetails" && selectedItem && (
+                <div className={styles.detailsModal}>
+                  <h2>Secondary Recycler Details</h2>
+                  <div className={styles.detailsContent}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Name:</span>
+                      <span>
+                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
+                      </span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Email:</span>
+                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Phone:</span>
+                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
+                    </div>
+                    {(selectedItem as Recycler).wasteManagementInfo && (
+                      <>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Company:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Location:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Waste Categories:</span>
+                          <span>
+                            {getWasteCategory(selectedItem as Recycler)}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Waste Classifications:</span>
+                          <span>
+                            {getWasteClassification(selectedItem as Recycler)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className={styles.formActions}>
+                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
+                  </div>
+                </div>
+              )}
+            </Modal>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Render Tertiary Recyclers
+  if (viewMode === "tertiary") {
+    return (
+      <div className={styles.dashboard}>
+        <div className={styles.glassContainer}>
+          <div className={styles.viewHeader}>
+            <button className={styles.backButton} onClick={closeView}>
+              ← Back to Dashboard
+            </button>
+            <h2>Tertiary Recyclers Management</h2>
+            <button
+              className={styles.addButton}
+              onClick={() => {
+                setSelectedItem(null);
+                setModalType("addTertiary");
+              }}
+            >
+              + Add Tertiary Recycler
+            </button>
+          </div>
+
+          <div className={styles.searchContainer}>
+            <input
+              type="text"
+              placeholder="Search tertiary recyclers..."
+              className={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className={styles.grid}>
+            {filteredTertiaryRecyclers.map((recycler) => (
+              <div key={recycler.id} className={styles.recyclerCard}>
+                <div className={styles.recyclerHeader}>
+                  {recycler.riderImageUrl ? (
+                    <Image
+                      src={recycler.riderImageUrl}
+                      alt={`${recycler.firstName} ${recycler.LastName}`}
+                      className={styles.avatar}
+                      width={50}
+                      height={50}
+                    />
+                  ) : (
+                    <div className={styles.avatarPlaceholder}>
+                      {recycler.firstName?.charAt(0) || "?"}
+                      {recycler.LastName?.charAt(0) || ""}
+                    </div>
+                  )}
+                  <div>
+                    <h3>
+                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
+                    </h3>
+                    <p className={styles.recyclerType}>Tertiary Recycler</p>
+                  </div>
+                </div>
+
+                {recycler.wasteManagementInfo && (
+                  <div className={styles.companyInfo}>
+                    <p>
+                      <strong>Company:</strong>{" "}
+                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Location:</strong>{" "}
+                      {recycler.wasteManagementInfo.location || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Email:</strong> {recycler.email || "N/A"}
+                    </p>
+                  </div>
+                )}
+
+                <div className={styles.recyclerActions}>
+                  <button
+                    className={styles.viewButton}
+                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
+                  >
+                    Details
+                  </button>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => {
+                      setSelectedItem(recycler);
+                      setModalType("editTertiary");
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDelete("Recyclers", recycler.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredTertiaryRecyclers.length === 0 && (
+            <div className={styles.noResults}>No tertiary recyclers found.</div>
+          )}
+
+          {/* Modals */}
+          {modalType && (
+            <Modal
+              onClose={() => {
+                setModalType(null);
+                setSelectedItem(null);
+              }}
+            >
+              {(modalType === "editTertiary" || modalType === "addTertiary") && (
+                <UserForm
+                  type="recycler"
+                  initialData={modalType === "editTertiary" && selectedItem ? selectedItem : undefined}
+                  onSubmit={(data) => {
+                    if (modalType === "editTertiary" && selectedItem) {
+                      handleUpdate("Recyclers", selectedItem.id, data);
+                    } else {
+                      handleCreate("Recyclers", Date.now().toString(), data);
+                    }
+                  }}
+                  onCancel={() => {
+                    setModalType(null);
+                    setSelectedItem(null);
+                  }}
+                />
+              )}
+              {modalType === "recyclerDetails" && selectedItem && (
+                <div className={styles.detailsModal}>
+                  <h2>Tertiary Recycler Details</h2>
+                  <div className={styles.detailsContent}>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Name:</span>
+                      <span>
+                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
+                      </span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Email:</span>
+                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
+                    </div>
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>Phone:</span>
+                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
+                    </div>
+                    {(selectedItem as Recycler).wasteManagementInfo && (
+                      <>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Company:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
+                          </span>
+                        </div>
+                        <div className={styles.detailRow}>
+                          <span className={styles.detailLabel}>Location:</span>
+                          <span>
+                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className={styles.formActions}>
+                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
+                  </div>
+                </div>
+              )}
+            </Modal>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
