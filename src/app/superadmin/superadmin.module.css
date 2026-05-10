@@ -1,7 +1,7 @@
 /* app/SuperAdmin/superadmin.module.css */
 
-/* CSS Variables for Theming */
-:root {
+/* CSS Variables - Using :global for root variables */
+:global(:root) {
   --primary: #90ef7b;
   --primary-dark: #2563eb;
   --secondary: #00f3a2;
@@ -24,13 +24,33 @@
   --radius-2xl: 1.5rem;
 }
 
-/* Dark Mode Support */
+/* Dark Mode Support - Using :global for media queries */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :global(:root) {
     --dark: #0f172a;
     --light-gray: #1e293b;
     --white: #1e293b;
   }
+}
+
+/* Global scrollbar styling */
+:global(::-webkit-scrollbar) {
+  width: 8px;
+  height: 8px;
+}
+
+:global(::-webkit-scrollbar-track) {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+:global(::-webkit-scrollbar-thumb) {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  border-radius: 10px;
+}
+
+:global(::-webkit-scrollbar-thumb:hover) {
+  background: var(--primary-dark);
 }
 
 .dashboard {
@@ -55,8 +75,8 @@
   font-size: 2.5rem;
   font-weight: 700;
   background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
-  -webkit-background-clip: text;
   background-clip: text;
+  -webkit-background-clip: text;
   color: transparent;
   margin-bottom: 2rem;
   text-align: center;
@@ -71,6 +91,7 @@
   font-size: 1.2rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
 /* Category Grid */
@@ -187,8 +208,8 @@
   font-size: 2rem;
   font-weight: 700;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
-  -webkit-background-clip: text;
   background-clip: text;
+  -webkit-background-clip: text;
   color: transparent;
   margin: 0;
 }
@@ -209,8 +230,8 @@
   font-size: 1.75rem;
   font-weight: 700;
   background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
-  -webkit-background-clip: text;
   background-clip: text;
+  -webkit-background-clip: text;
   color: transparent;
   margin: 0;
 }
@@ -454,8 +475,8 @@
   font-size: 1.5rem;
   font-weight: 700;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
-  -webkit-background-clip: text;
   background-clip: text;
+  -webkit-background-clip: text;
   color: transparent;
   border-bottom: 2px solid #e2e8f0;
   padding-bottom: 0.75rem;
@@ -502,24 +523,41 @@
   color: var(--dark);
 }
 
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Badge styles for status */
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 10px;
+.badgeSuccess {
+  background: linear-gradient(135deg, var(--success), #34d399);
+  color: white;
 }
 
-::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
-  border-radius: 10px;
+.badgeWarning {
+  background: linear-gradient(135deg, var(--warning), #fbbf24);
+  color: white;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--primary-dark);
+.badgeDanger {
+  background: linear-gradient(135deg, var(--danger), #f87171);
+  color: white;
+}
+
+.badgeInfo {
+  background: linear-gradient(135deg, var(--info), #06b6d4);
+  color: white;
+}
+
+/* Animation for loading */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* Responsive Design */
@@ -570,45 +608,4 @@
   .backButton, .addButton {
     justify-content: center;
   }
-}
-
-/* Animation for loading */
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.loading {
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-/* Badge styles for status */
-.badge {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.badge-success {
-  background: linear-gradient(135deg, var(--success), #34d399);
-  color: white;
-}
-
-.badge-warning {
-  background: linear-gradient(135deg, var(--warning), #fbbf24);
-  color: white;
-}
-
-.badge-danger {
-  background: linear-gradient(135deg, var(--danger), #f87171);
-  color: white;
-}
-
-.badge-info {
-  background: linear-gradient(135deg, var(--info), #06b6d4);
-  color: white;
 }
