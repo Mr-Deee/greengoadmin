@@ -696,11 +696,11 @@ export default function SuperAdminPage() {
             </div>
           </div>
 
-          <div className={styles.overviewCards}>
+          {/* <div className={styles.overviewCards}>
             <StatsCard title="Total Requests" value={requests.length} icon="📋" />
             <StatsCard title="Total Recyclers" value={totalRecyclers} icon="♻️" />
             <StatsCard title="Registered Clients" value={clients.length} icon="👥" />
-          </div>
+          </div> */}
         </div>
         
         {toast && <Toast {...toast} onClose={() => setToast(null)} />}
