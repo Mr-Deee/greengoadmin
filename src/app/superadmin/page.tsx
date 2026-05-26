@@ -1,10 +1,9 @@
-// app/superadmin/page.tsx
 "use client";
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ref, get, onValue, remove, update } from "firebase/database";
 import styles from "./superadmin.module.css";
 import { WasteManagementRequest, Recycler, Client } from "@/types";
@@ -12,53 +11,527 @@ import Modal from "@/components/Modal";
 import UserForm from "@/components/UserForm";
 import Image from "next/image";
 
+// ============================================================================
+// Types & Constants
+// ============================================================================
+
 type ViewMode = "clients" | "recyclers" | "secondary" | "tertiary" | null;
 
-// Helper function to get recycler category safely
-const getRecyclerCategory = (recycler: Recycler): string => {
-  if (recycler.WMSCATEGORY) return recycler.WMSCATEGORY;
-  if (recycler.wmsCategory) return recycler.wmsCategory;
-  if (recycler.wasteManagementInfo?.RecycleType) return recycler.wasteManagementInfo.RecycleType;
-  return "Primary";
+// ============================================================================
+// Helper Components
+// ============================================================================
+
+// Image Component with Fallback
+const AvatarWithFallback = ({ 
+  src, 
+  name, 
+  size = 52 
+}: { 
+  src?: string; 
+  name: string; 
+  size?: number;
+}) => {
+  const [imgError, setImgError] = useState(false);
+  const initials = name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+
+  if (imgError || !src) {
+    return (
+      <div 
+        className={styles.avatarPlaceholder}
+        style={{ width: size, height: size, fontSize: size * 0.4 }}
+      >
+        {initials || "?"}
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={name}
+      className={styles.avatar}
+      width={size}
+      height={size}
+      onError={() => setImgError(true)}
+      unoptimized={false}
+    />
+  );
 };
 
-// Helper function to get recycler phone safely
-const getRecyclerPhone = (recycler: Recycler): string => {
-  return recycler.phone || recycler.phoneNumber || "N/A";
+// Toast Notification Component
+const Toast = ({ 
+  message, 
+  type, 
+  onClose 
+}: { 
+  message: string; 
+  type: "success" | "error" | "info";
+  onClose: () => void;
+}) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 5000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const icons = { success: "✅", error: "❌", info: "ℹ️" };
+  
+  return (
+    <div className={`${styles.toast} ${styles[type]}`}>
+      <span className={styles.toastIcon}>{icons[type]}</span>
+      <span className={styles.toastMessage}>{message}</span>
+      <button onClick={onClose} className={styles.toastClose}>×</button>
+    </div>
+  );
 };
 
-// Helper function to get waste category safely
-const getWasteCategory = (recycler: Recycler): string => {
-  const wasteCategory = recycler.wasteManagementInfo?.WasteCategory;
-  if (!wasteCategory) return "N/A";
-  if (Array.isArray(wasteCategory)) return wasteCategory.join(", ");
-  return wasteCategory;
+// Stats Card Component
+const StatsCard = ({ title, value, icon }: { title: string; value: number; icon: string }) => (
+  <div className={styles.overviewCard}>
+    <div className={styles.overviewCardIcon}>{icon}</div>
+    <h3>{title}</h3>
+    <div className={styles.statValue}>{value.toLocaleString()}</div>
+  </div>
+);
+
+// Entity Card Component
+const EntityCard = ({ 
+  entity, 
+  type, 
+  onView, 
+  onDelete 
+}: { 
+  entity: Client | Recycler;
+  type: "client" | "recycler";
+  onView: () => void;
+  onDelete: () => void;
+}) => {
+  const isClient = type === "client";
+  const name = isClient 
+    ? `${(entity as Client).firstName || "Unknown"} ${(entity as Client).LastName || ""}`
+    : `${(entity as Recycler).firstName || "Unknown"} ${(entity as Recycler).LastName || ""}`;
+  
+  const email = isClient ? (entity as Client).email : (entity as Recycler).email;
+  const phone = isClient ? (entity as Client).phoneNumber : (entity as Recycler).phone || (entity as Recycler).phoneNumber;
+  const company = !isClient ? (entity as Recycler).wasteManagementInfo?.CompanyName : null;
+  const location = isClient ? (entity as Client).location : (entity as Recycler).wasteManagementInfo?.location;
+
+  const handleViewClick = () => {
+    console.log('View button clicked for entity:', entity, 'type:', type);
+    onView();
+  };
+
+  const handleDeleteClick = () => {
+    console.log('Delete button clicked for entity:', entity);
+    onDelete();
+  };
+
+  return (
+    <div className={styles.entityCard}>
+      <div className={styles.entityHeader}>
+        <AvatarWithFallback 
+          src={!isClient ? (entity as Recycler).riderImageUrl : undefined}
+          name={name}
+          size={52}
+        />
+        <div className={styles.entityHeaderContent}>
+          <h3>{name}</h3>
+          <span className={styles.entityType}>
+            {isClient ? "👤 Client" : `♻️ ${(entity as Recycler).WMSTYPE || "Recycler"}`}
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.entityInfo}>
+        {company && <p><strong>Company:</strong> {company}</p>}
+        <p><strong>Email:</strong> {email || "N/A"}</p>
+        <p><strong>Phone:</strong> {phone || "N/A"}</p>
+        {location && <p><strong>Location:</strong> {location}</p>}
+      </div>
+
+      <div className={styles.entityActions}>
+        <button className={styles.viewButton} onClick={handleViewClick}>
+          📋 View / Edit
+        </button>
+        <button className={styles.deleteButton} onClick={handleDeleteClick}>
+          🗑️ Delete
+        </button>
+      </div>
+    </div>
+  );
 };
 
-// Helper function to get waste classification safely
-const getWasteClassification = (recycler: Recycler): string => {
-  const classification = recycler.wasteManagementInfo?.WasteClassification;
-  if (!classification) return "N/A";
-  if (Array.isArray(classification)) return classification.join(", ");
-  return classification;
+// ============================================================================
+// Popup Menu Component - WORKING VERSION
+// ============================================================================
+
+const PopupMenu = ({
+  isOpen,
+  onClose,
+  title,
+  item,
+  itemType,
+  onSave,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  item: Client | Recycler | null;
+  itemType: "client" | "recycler";
+  onSave: (updatedData: any) => void;
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<any>({});
+  const popupRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef<number>(0);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('PopupMenu state:', { isOpen, hasItem: !!item, title, itemType });
+  }, [isOpen, item, title, itemType]);
+
+  // Handle body scroll and ESC key
+  useEffect(() => {
+    if (isOpen) {
+      console.log('Popup opening - locking body scroll');
+      // Store current scroll position
+      scrollPositionRef.current = window.scrollY;
+      
+      // Lock body scroll
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollPositionRef.current}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
+      document.body.style.width = '100%';
+      
+      const handleEsc = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          console.log('ESC pressed');
+          if (isEditing) {
+            setIsEditing(false);
+          } else {
+            onClose();
+          }
+        }
+      };
+      
+      window.addEventListener("keydown", handleEsc);
+      
+      // Focus management
+      setTimeout(() => {
+        if (popupRef.current) {
+          const focusableElements = popupRef.current.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          if (focusableElements.length) {
+            (focusableElements[0] as HTMLElement).focus();
+          }
+        }
+      }, 100);
+      
+      return () => {
+        console.log('Popup closing - restoring body scroll');
+        // Unlock body scroll
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.width = '';
+        
+        // Restore scroll position
+        window.scrollTo(0, scrollPositionRef.current);
+        
+        window.removeEventListener("keydown", handleEsc);
+      };
+    }
+  }, [isOpen, onClose, isEditing]);
+
+  // Set form data when item changes
+  useEffect(() => {
+    if (isOpen && item) {
+      console.log('Setting form data for item:', item);
+      setFormData({ ...item });
+    }
+  }, [isOpen, item]);
+
+  // Handle click outside
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    console.log('Overlay clicked, target:', e.target === e.currentTarget);
+    if (e.target === e.currentTarget) {
+      if (isEditing) {
+        setIsEditing(false);
+      } else {
+        onClose();
+      }
+    }
+  };
+
+  // Early return conditions
+  if (!isOpen) {
+    return null;
+  }
+  
+  if (!item) {
+    console.warn('PopupMenu: No item provided');
+    return null;
+  }
+
+  console.log('Rendering popup menu');
+
+  const isClient = itemType === "client" || ("firstName" in item && "LastName" in item);
+  const client = isClient ? item as Client : null;
+  const recycler = !isClient ? item as Recycler : null;
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    if (name.includes(".")) {
+      const [parent, child] = name.split(".");
+      setFormData((prev: any) => ({
+        ...prev,
+        [parent]: { ...prev[parent], [child]: value },
+      }));
+    } else {
+      setFormData((prev: any) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log('Submitting form data:', formData);
+    onSave(formData);
+    setIsEditing(false);
+    onClose();
+  };
+
+  const handleClose = () => {
+    console.log('Close button clicked');
+    if (isEditing) {
+      setIsEditing(false);
+    } else {
+      onClose();
+    }
+  };
+
+  const renderClientForm = () => (
+    <>
+      {["firstName", "LastName", "email", "phoneNumber", "location", "SettlementType", "gpsAddress", "ghCardNo", "dateOfBirth"].map((field) => (
+        <div key={field} className={styles.popupFormGroup}>
+          <label>{field.replace(/([A-Z])/g, ' $1').trim()}</label>
+          <input
+            type={field === "dateOfBirth" ? "date" : field === "email" ? "email" : "text"}
+            name={field}
+            value={formData[field] || ""}
+            onChange={handleInputChange}
+            required={["firstName", "LastName", "email", "phoneNumber"].includes(field)}
+          />
+        </div>
+      ))}
+    </>
+  );
+
+  const renderRecyclerForm = () => (
+    <>
+      {["firstName", "LastName", "email", "phone"].map((field) => (
+        <div key={field} className={styles.popupFormGroup}>
+          <label>{field.replace(/([A-Z])/g, ' $1').trim()}</label>
+          <input
+            type={field === "email" ? "email" : "text"}
+            name={field}
+            value={formData[field] || ""}
+            onChange={handleInputChange}
+            required={["firstName", "LastName", "email"].includes(field)}
+          />
+        </div>
+      ))}
+      
+      <div className={styles.popupDividerText}>Waste Management Info</div>
+      
+      {["CompanyName", "location", "RecycleType", "employees"].map((field) => (
+        <div key={field} className={styles.popupFormGroup}>
+          <label>{field}</label>
+          <input
+            type={field === "employees" ? "number" : "text"}
+            name={`wasteManagementInfo.${field}`}
+            value={formData.wasteManagementInfo?.[field] || ""}
+            onChange={handleInputChange}
+          />
+        </div>
+      ))}
+      
+      {["WasteCategory", "WasteClassification"].map((field) => (
+        <div key={field} className={styles.popupFormGroup}>
+          <label>{field} (comma separated)</label>
+          <input
+            type="text"
+            value={
+              Array.isArray(formData.wasteManagementInfo?.[field])
+                ? formData.wasteManagementInfo[field].join(", ")
+                : formData.wasteManagementInfo?.[field] || ""
+            }
+            onChange={(e) =>
+              setFormData((prev: any) => ({
+                ...prev,
+                wasteManagementInfo: {
+                  ...prev.wasteManagementInfo,
+                  [field]: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean),
+                },
+              }))
+            }
+          />
+        </div>
+      ))}
+    </>
+  );
+
+  const renderClientDetails = () => (
+    <>
+      <DetailRow label="Full Name" value={`${client?.firstName || "N/A"} ${client?.LastName || ""}`} />
+      <DetailRow label="Email" value={client?.email || "N/A"} />
+      <DetailRow label="Phone" value={client?.phoneNumber || "N/A"} />
+      <DetailRow label="Location" value={client?.location || "N/A"} />
+      <DetailRow label="Settlement Type" value={client?.SettlementType || "N/A"} />
+      <DetailRow label="GPS Address" value={client?.gpsAddress || "N/A"} />
+      <DetailRow label="GH Card No" value={client?.ghCardNo || "N/A"} />
+      <DetailRow label="Date of Birth" value={client?.dateOfBirth || "N/A"} />
+    </>
+  );
+
+  const renderRecyclerDetails = () => (
+    <>
+      <DetailRow label="Full Name" value={`${recycler?.firstName || "N/A"} ${recycler?.LastName || ""}`} />
+      <DetailRow label="Email" value={recycler?.email || "N/A"} />
+      <DetailRow label="Phone" value={recycler?.phone || recycler?.phoneNumber || "N/A"} />
+      <DetailRow label="Category" value={recycler?.WMSCATEGORY || recycler?.wmsCategory || recycler?.wasteManagementInfo?.RecycleType || "Primary"} />
+      
+      {recycler?.wasteManagementInfo && (
+        <>
+          <div className={styles.popupDivider} />
+          <DetailRow label="Company" value={recycler.wasteManagementInfo.CompanyName || "N/A"} />
+          <DetailRow label="Location" value={recycler.wasteManagementInfo.location || "N/A"} />
+          <DetailRow label="Recycle Type" value={recycler.wasteManagementInfo.RecycleType || "N/A"} />
+          <DetailRow 
+            label="Waste Category" 
+            value={
+              recycler.wasteManagementInfo.WasteCategory
+                ? Array.isArray(recycler.wasteManagementInfo.WasteCategory)
+                  ? recycler.wasteManagementInfo.WasteCategory.join(", ")
+                  : recycler.wasteManagementInfo.WasteCategory
+                : "N/A"
+            }
+          />
+          <DetailRow 
+            label="Waste Classification" 
+            value={
+              recycler.wasteManagementInfo.WasteClassification
+                ? Array.isArray(recycler.wasteManagementInfo.WasteClassification)
+                  ? recycler.wasteManagementInfo.WasteClassification.join(", ")
+                  : recycler.wasteManagementInfo.WasteClassification
+                : "N/A"
+            }
+          />
+          <DetailRow label="Employees" value={recycler.wasteManagementInfo.employees?.toString() || "N/A"} />
+        </>
+      )}
+    </>
+  );
+
+  const DetailRow = ({ label, value }: { label: string; value: string }) => (
+    <div className={styles.popupRow}>
+      <span className={styles.popupLabel}>{label}:</span>
+      <span className={styles.popupValue}>{value}</span>
+    </div>
+  );
+
+    return (
+      <div className={styles.popupOverlay} onClick={handleOverlayClick}>
+        <div
+          className={styles.popupMenu}
+          ref={popupRef}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className={styles.popupHeader}>
+            <h3>{title}</h3>
+    
+            <div>
+              {!isEditing && (
+                <button
+                  className={styles.popupEditBtn}
+                  onClick={() => setIsEditing(true)}
+                >
+                  ✏️ Edit
+                </button>
+              )}
+    
+              <button className={styles.popupClose} onClick={onClose}>
+                ×
+              </button>
+            </div>
+          </div>
+    
+          {isEditing ? (
+            <form onSubmit={handleSubmit}>
+              {isClient ? renderClientForm() : renderRecyclerForm()}
+    
+              <div className={styles.popupFormActions}>
+                <button
+                  type="button"
+                  className={styles.popupCancelBtn}
+                  onClick={() => setIsEditing(false)}
+                >
+                  Cancel
+                </button>
+    
+                <button type="submit" className={styles.popupSaveBtn}>
+                  Save
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div>
+              {isClient ? renderClientDetails() : renderRecyclerDetails()}
+            </div>
+          )}
+        </div>
+      </div>
+    
+  );
 };
+
+// ============================================================================
+// Main Component
+// ============================================================================
 
 export default function SuperAdminPage() {
   const router = useRouter();
+  
+  // State
   const [requests, setRequests] = useState<WasteManagementRequest[]>([]);
-  const [recyclers, setRecyclers] = useState<Recycler[]>([]);
-  const [secondaryRecyclers, setSecondaryRecyclers] = useState<Recycler[]>([]);
-  const [tertiaryRecyclers, setTertiaryRecyclers] = useState<Recycler[]>([]);
+  const [recyclers, setRecyclers] = useState<{ primary: Recycler[]; secondary: Recycler[]; tertiary: Recycler[] }>({
+    primary: [], secondary: [], tertiary: []
+  });
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<
-    WasteManagementRequest | Recycler | Client | null
-  >(null);
-  const [modalType, setModalType] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>(null);
+  const [selectedItem, setSelectedItem] = useState<Client | Recycler | null>(null);
+  const [popupState, setPopupState] = useState({ isOpen: false, title: "", type: "client" as "client" | "recycler" });
+  const [modalType, setModalType] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
-  // Authentication check
+  // Helper Functions
+  const showToast = useCallback((message: string, type: "success" | "error" | "info") => {
+    setToast({ message, type });
+  }, []);
+
+  const getRecyclerCategory = useCallback((recycler: Recycler): "primary" | "secondary" | "tertiary" => {
+    const category = recycler.WMSCATEGORY || recycler.wmsCategory || recycler.wasteManagementInfo?.RecycleType;
+    if (category === "Secondary") return "secondary";
+    if (category === "Tertiary") return "tertiary";
+    return "primary";
+  }, []);
+
+  // Authentication Check
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
@@ -82,973 +555,268 @@ export default function SuperAdminPage() {
     return () => unsubscribe();
   }, [router]);
 
-  // Data fetching
+  // Data Fetching
   useEffect(() => {
-    const requestsRef = ref(db, "ClientRequest");
-    const recyclersRef = ref(db, "Recyclers");
-    const clientsRef = ref(db, "Clients");
-
-    const unsubscribeRequests = onValue(requestsRef, (snapshot) => {
+    const unsubscribeRecyclers = onValue(ref(db, "Recyclers"), (snapshot) => {
       const data = snapshot.val();
-      const requestsArray: WasteManagementRequest[] = data
-        ? Object.keys(data).map((key) => ({
-            id: key,
-            ...data[key],
-          }))
-        : [];
-      setRequests(requestsArray);
-    });
-
-    const unsubscribeRecyclers = onValue(recyclersRef, (snapshot) => {
-      const data = snapshot.val();
-      const recyclersArray: Recycler[] = data
-        ? Object.keys(data).map((key) => ({
-            id: key,
-            ...data[key],
-          }))
-        : [];
-
-      // Categorize recyclers by their category
-      const primary: Recycler[] = [];
-      const secondary: Recycler[] = [];
-      const tertiary: Recycler[] = [];
-
+      const recyclersArray: Recycler[] = data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : [];
+      
+      const categorized = { primary: [] as Recycler[], secondary: [] as Recycler[], tertiary: [] as Recycler[] };
       recyclersArray.forEach((recycler) => {
-        const category = getRecyclerCategory(recycler);
-        
-        if (category === "Secondary") {
-          secondary.push(recycler);
-        } else if (category === "Tertiary") {
-          tertiary.push(recycler);
-        } else {
-          primary.push(recycler);
-        }
+        categorized[getRecyclerCategory(recycler)].push(recycler);
       });
-
-      setRecyclers(primary);
-      setSecondaryRecyclers(secondary);
-      setTertiaryRecyclers(tertiary);
+      setRecyclers(categorized);
     });
 
-    const unsubscribeClients = onValue(clientsRef, (snapshot) => {
+    const unsubscribeClients = onValue(ref(db, "Clients"), (snapshot) => {
       const data = snapshot.val();
-      const clientsArray: Client[] = data
-        ? Object.keys(data).map((key) => ({
-            id: key,
-            ...data[key],
-          }))
-        : [];
-      setClients(clientsArray);
+      setClients(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
+    });
+
+    const unsubscribeRequests = onValue(ref(db, "ClientRequest"), (snapshot) => {
+      const data = snapshot.val();
+      setRequests(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
     });
 
     return () => {
-      unsubscribeRequests();
       unsubscribeRecyclers();
       unsubscribeClients();
+      unsubscribeRequests();
     };
-  }, []);
+  }, [getRecyclerCategory]);
 
-  // Filter functions
-  const filteredClients = clients.filter(
-    (client) =>
-      client.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.phoneNumber?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filtered Data
+  const filteredData = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    
+    const filterEntity = (items: any[], fields: string[]) => {
+      return items.filter(item => 
+        fields.some(field => {
+          const value = field.split('.').reduce((obj, key) => obj?.[key], item);
+          return value?.toString().toLowerCase().includes(term);
+        })
+      );
+    };
 
-  const filteredRecyclers = recyclers.filter(
-    (recycler) =>
-      recycler.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(
-        searchTerm.toLowerCase()
-      )
-  );
+    return {
+      clients: filterEntity(clients, ["firstName", "LastName", "email", "phoneNumber"]),
+      primary: filterEntity(recyclers.primary, ["firstName", "LastName", "email", "wasteManagementInfo.CompanyName"]),
+      secondary: filterEntity(recyclers.secondary, ["firstName", "LastName", "email", "wasteManagementInfo.CompanyName"]),
+      tertiary: filterEntity(recyclers.tertiary, ["firstName", "LastName", "email", "wasteManagementInfo.CompanyName"]),
+    };
+  }, [searchTerm, clients, recyclers]);
 
-  const filteredSecondaryRecyclers = secondaryRecyclers.filter(
-    (recycler) =>
-      recycler.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(
-        searchTerm.toLowerCase()
-      )
-  );
-
-  const filteredTertiaryRecyclers = tertiaryRecyclers.filter(
-    (recycler) =>
-      recycler.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.LastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(
-        searchTerm.toLowerCase()
-      )
-  );
-
+  // CRUD Operations
   const handleDelete = async (collection: string, id: string) => {
-    if (window.confirm("Are you sure you want to delete this item?")) {
-      try {
-        await remove(ref(db, `${collection}/${id}`));
-        alert("Item deleted successfully!");
-      } catch (error) {
-        console.error("Error deleting item:", error);
-        alert("Failed to delete item. Please try again.");
-      }
+    if (!confirm("Are you sure you want to delete this item?")) return;
+    try {
+      await remove(ref(db, `${collection}/${id}`));
+      showToast("Item deleted successfully!", "success");
+    } catch (error) {
+      console.error("Error deleting item:", error);
+      showToast("Failed to delete item. Please try again.", "error");
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleUpdate = async (collection: string, id: string, updatedData: any) => {
+    try {
+      await update(ref(db, `${collection}/${id}`), updatedData);
+      setPopupState(prev => ({ ...prev, isOpen: false }));
+      setSelectedItem(null);
+      showToast("Item updated successfully!", "success");
+    } catch (error) {
+      console.error("Error updating item:", error);
+      showToast("Failed to update item. Please try again.", "error");
+    }
+  };
+
   const handleCreate = async (collection: string, id: string, data: any) => {
     try {
       await update(ref(db, `${collection}/${id}`), data);
       setModalType(null);
       setSelectedItem(null);
-      alert("Item created successfully!");
+      showToast("Item created successfully!", "success");
     } catch (error) {
       console.error("Error creating item:", error);
-      alert("Failed to create item. Please try again.");
+      showToast("Failed to create item. Please try again.", "error");
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleUpdate = async (collection: string, id: string, updatedData: any) => {
-    try {
-      await update(ref(db, `${collection}/${id}`), updatedData);
-      setModalType(null);
-      setSelectedItem(null);
-      alert("Item updated successfully!");
-    } catch (error) {
-      console.error("Error updating item:", error);
-      alert("Failed to update item. Please try again.");
-    }
-  };
-
-  const openDetailsModal = (
-    item: WasteManagementRequest | Recycler | Client,
-    type: string
-  ) => {
+  const openPopupMenu = (item: Client | Recycler, title: string, type: "client" | "recycler") => {
+    console.log('Opening popup menu for:', item, title, type);
     setSelectedItem(item);
-    setModalType(type);
+    setPopupState({ isOpen: true, title, type });
   };
 
-  const closeView = () => {
-    setViewMode(null);
-    setSearchTerm("");
-  };
+  const handleClosePopup = useCallback(() => {
+    console.log('Closing popup');
+    setPopupState(prev => ({ ...prev, isOpen: false }));
+    setTimeout(() => setSelectedItem(null), 300);
+  }, []);
 
+  // Loading State
   if (loading) {
-    return <div className={styles.loading}>Loading dashboard...</div>;
+    return (
+      <div className={styles.loadingScreen}>
+        <div className={styles.loadingSpinner} />
+        <div className={styles.loadingText}>Loading dashboard...</div>
+      </div>
+    );
   }
 
-  // Render category boxes (main screen)
+  // Main Dashboard View
   if (viewMode === null) {
+    const totalRecyclers = recyclers.primary.length + recyclers.secondary.length + recyclers.tertiary.length;
+
     return (
       <div className={styles.dashboard}>
         <div className={styles.glassContainer}>
           <h1 className={styles.title}>Waste Management Dashboard</h1>
-
-          {/* Category Boxes */}
+          
           <div className={styles.categoryGrid}>
-            <div
-              className={styles.categoryCard}
-              onClick={() => setViewMode("clients")}
-            >
+            <div className={styles.categoryCard} onClick={() => setViewMode("clients")}>
               <div className={styles.categoryIcon}>👥</div>
               <h3>Clients</h3>
               <p className={styles.categoryCount}>{clients.length} registered</p>
             </div>
-
-            <div
-              className={styles.categoryCard}
-              onClick={() => setViewMode("recyclers")}
-            >
+            <div className={styles.categoryCard} onClick={() => setViewMode("recyclers")}>
               <div className={styles.categoryIcon}>♻️</div>
               <h3>Primary Recyclers</h3>
-              <p className={styles.categoryCount}>{recyclers.length} active</p>
+              <p className={styles.categoryCount}>{recyclers.primary.length} active</p>
             </div>
-
-            <div
-              className={styles.categoryCard}
-              onClick={() => setViewMode("secondary")}
-            >
+            <div className={styles.categoryCard} onClick={() => setViewMode("secondary")}>
               <div className={styles.categoryIcon}>🏭</div>
               <h3>Secondary Recyclers</h3>
-              <p className={styles.categoryCount}>
-                {secondaryRecyclers.length} active
-              </p>
+              <p className={styles.categoryCount}>{recyclers.secondary.length} active</p>
             </div>
-
-            <div
-              className={styles.categoryCard}
-              onClick={() => setViewMode("tertiary")}
-            >
+            <div className={styles.categoryCard} onClick={() => setViewMode("tertiary")}>
               <div className={styles.categoryIcon}>🔧</div>
               <h3>Tertiary Recyclers</h3>
-              <p className={styles.categoryCount}>
-                {tertiaryRecyclers.length} active
-              </p>
+              <p className={styles.categoryCount}>{recyclers.tertiary.length} active</p>
             </div>
           </div>
 
-          {/* Quick Stats */}
           <div className={styles.overviewCards}>
-            <div className={styles.card}>
-              <h3>Total Requests</h3>
-              <p>{requests.length}</p>
-            </div>
-            <div className={styles.card}>
-              <h3>Total Recyclers</h3>
-              <p>{recyclers.length + secondaryRecyclers.length + tertiaryRecyclers.length}</p>
-            </div>
-            <div className={styles.card}>
-              <h3>Registered Clients</h3>
-              <p>{clients.length}</p>
-            </div>
+            <StatsCard title="Total Requests" value={requests.length} icon="📋" />
+            <StatsCard title="Total Recyclers" value={totalRecyclers} icon="♻️" />
+            <StatsCard title="Registered Clients" value={clients.length} icon="👥" />
           </div>
         </div>
+        
+        {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       </div>
     );
   }
 
-  // Render Clients List
-  if (viewMode === "clients") {
-    return (
-      <div className={styles.dashboard}>
-        <div className={styles.glassContainer}>
-          <div className={styles.viewHeader}>
-            <button className={styles.backButton} onClick={closeView}>
-              ← Back to Dashboard
-            </button>
-            <h2>Clients Management</h2>
-            <button
-              className={styles.addButton}
-              onClick={() => {
-                setSelectedItem(null);
-                setModalType("addClient");
-              }}
-            >
-              + Add Client
-            </button>
-          </div>
+  // Entity View Renderer
+  const renderEntityView = (
+    title: string,
+    items: (Client | Recycler)[],
+    type: "client" | "recycler",
+    collection: string,
+    addButtonText: string
+  ) => (
+    <div className={styles.dashboard}>
+      <div className={styles.glassContainer}>
+        <div className={styles.viewHeader}>
+          <button className={styles.backButton} onClick={() => { setViewMode(null); setSearchTerm(""); }}>
+            ← Back to Dashboard
+          </button>
+          <h2>{title}</h2>
+          <button 
+            className={styles.addButton} 
+            onClick={() => { setSelectedItem(null); setModalType(`add${type === "client" ? "Client" : "Recycler"}`); }}
+          >
+            + {addButtonText}
+          </button>
+        </div>
 
-          <div className={styles.searchContainer}>
+        <div className={styles.searchContainer}>
+          <div className={styles.searchWrapper}>
+            <span className={styles.searchIcon}>🔍</span>
             <input
               type="text"
-              placeholder="Search clients by name, email, or phone..."
+              placeholder={`Search ${title.toLowerCase()}...`}
               className={styles.searchInput}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {searchTerm && (
+              <button className={styles.searchClear} onClick={() => setSearchTerm("")}>
+                ✕
+              </button>
+            )}
           </div>
-
-          <div className={styles.grid}>
-            {filteredClients.map((client) => (
-              <div key={client.id} className={styles.recyclerCard}>
-                <div className={styles.recyclerHeader}>
-                  <div className={styles.avatarPlaceholder}>
-                    {client.firstName?.charAt(0) || "?"}
-                    {client.LastName?.charAt(0) || ""}
-                  </div>
-                  <div>
-                    <h3>
-                      {client.firstName || "Unknown"} {client.LastName || ""}
-                    </h3>
-                    <p className={styles.recyclerType}>
-                      {client.SettlementType || "Client"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className={styles.companyInfo}>
-                  <p>
-                    <strong>Email:</strong> {client.email || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Phone:</strong> {client.phoneNumber || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Location:</strong> {client.location || "N/A"}
-                  </p>
-                </div>
-
-                <div className={styles.recyclerActions}>
-                  <button
-                    className={styles.viewButton}
-                    onClick={() => openDetailsModal(client, "clientDetails")}
-                  >
-                    Details
-                  </button>
-                  <button
-                    className={styles.editButton}
-                    onClick={() => {
-                      setSelectedItem(client);
-                      setModalType("editClient");
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className={styles.deleteButton}
-                    onClick={() => handleDelete("Clients", client.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {filteredClients.length === 0 && (
-            <div className={styles.noResults}>No clients found.</div>
-          )}
-
-          {/* Modals */}
-          {modalType && (
-            <Modal
-              onClose={() => {
-                setModalType(null);
-                setSelectedItem(null);
-              }}
-            >
-              {(modalType === "editClient" || modalType === "addClient") && (
-                <UserForm
-                  type="client"
-                  initialData={modalType === "editClient" && selectedItem ? selectedItem : undefined}
-                  onSubmit={(data) => {
-                    if (modalType === "editClient" && selectedItem) {
-                      handleUpdate("Clients", selectedItem.id, data);
-                    } else {
-                      handleCreate("Clients", Date.now().toString(), data);
-                    }
-                  }}
-                  onCancel={() => {
-                    setModalType(null);
-                    setSelectedItem(null);
-                  }}
-                />
-              )}
-              {modalType === "clientDetails" && selectedItem && (
-                <div className={styles.detailsModal}>
-                  <h2>Client Details</h2>
-                  <div className={styles.detailsContent}>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Name:</span>
-                      <span>
-                        {(selectedItem as Client).firstName || "N/A"} {(selectedItem as Client).LastName || ""}
-                      </span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Email:</span>
-                      <span>{(selectedItem as Client).email || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Phone:</span>
-                      <span>{(selectedItem as Client).phoneNumber || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Location:</span>
-                      <span>{(selectedItem as Client).location || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Settlement Type:</span>
-                      <span>{(selectedItem as Client).SettlementType || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>GPS Address:</span>
-                      <span>{(selectedItem as Client).gpsAddress || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>GH Card No:</span>
-                      <span>{(selectedItem as Client).ghCardNo || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Date of Birth:</span>
-                      <span>{(selectedItem as Client).dateOfBirth || "N/A"}</span>
-                    </div>
-                  </div>
-                  <div className={styles.formActions}>
-                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
-                  </div>
-                </div>
-              )}
-            </Modal>
-          )}
         </div>
-      </div>
-    );
-  }
 
-  // Render Recyclers (Primary)
-  if (viewMode === "recyclers") {
-    return (
-      <div className={styles.dashboard}>
-        <div className={styles.glassContainer}>
-          <div className={styles.viewHeader}>
-            <button className={styles.backButton} onClick={closeView}>
-              ← Back to Dashboard
-            </button>
-            <h2>Primary Recyclers Management</h2>
-            <button
-              className={styles.addButton}
-              onClick={() => {
-                setSelectedItem(null);
-                setModalType("addRecycler");
-              }}
-            >
-              + Add Recycler
-            </button>
-          </div>
-
-          <div className={styles.searchContainer}>
-            <input
-              type="text"
-              placeholder="Search recyclers by name, email, or company..."
-              className={styles.searchInput}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+        <div className={styles.grid}>
+          {items.map((item) => (
+            <EntityCard
+              key={item.id}
+              entity={item}
+              type={type}
+              onView={() => openPopupMenu(item, `${title} Information`, type)}
+              onDelete={() => handleDelete(collection, item.id)}
             />
-          </div>
-
-          <div className={styles.grid}>
-            {filteredRecyclers.map((recycler) => (
-              <div key={recycler.id} className={styles.recyclerCard}>
-                <div className={styles.recyclerHeader}>
-                  {recycler.riderImageUrl ? (
-                    <Image
-                      src={recycler.riderImageUrl}
-                      alt={`${recycler.firstName} ${recycler.LastName}`}
-                      className={styles.avatar}
-                      width={50}
-                      height={50}
-                    />
-                  ) : (
-                    <div className={styles.avatarPlaceholder}>
-                      {recycler.firstName?.charAt(0) || "?"}
-                      {recycler.LastName?.charAt(0) || ""}
-                    </div>
-                  )}
-                  <div>
-                    <h3>
-                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
-                    </h3>
-                    <p className={styles.recyclerType}>
-                      {recycler.WMSTYPE || "Primary Recycler"}
-                    </p>
-                  </div>
-                </div>
-
-                {recycler.wasteManagementInfo && (
-                  <div className={styles.companyInfo}>
-                    <p>
-                      <strong>Company:</strong>{" "}
-                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
-                    </p>
-                    <p>
-                      <strong>Location:</strong>{" "}
-                      {recycler.wasteManagementInfo.location || "N/A"}
-                    </p>
-                    <p>
-                      <strong>Email:</strong> {recycler.email || "N/A"}
-                    </p>
-                  </div>
-                )}
-
-                <div className={styles.recyclerActions}>
-                  <button
-                    className={styles.viewButton}
-                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
-                  >
-                    Details
-                  </button>
-                  <button
-                    className={styles.editButton}
-                    onClick={() => {
-                      setSelectedItem(recycler);
-                      setModalType("editRecycler");
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className={styles.deleteButton}
-                    onClick={() => handleDelete("Recyclers", recycler.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {filteredRecyclers.length === 0 && (
-            <div className={styles.noResults}>No primary recyclers found.</div>
-          )}
-
-          {/* Modals */}
-          {modalType && (
-            <Modal
-              onClose={() => {
-                setModalType(null);
-                setSelectedItem(null);
-              }}
-            >
-              {(modalType === "editRecycler" || modalType === "addRecycler") && (
-                <UserForm
-                  type="recycler"
-                  initialData={modalType === "editRecycler" && selectedItem ? selectedItem : undefined}
-                  onSubmit={(data) => {
-                    if (modalType === "editRecycler" && selectedItem) {
-                      handleUpdate("Recyclers", selectedItem.id, data);
-                    } else {
-                      handleCreate("Recyclers", Date.now().toString(), data);
-                    }
-                  }}
-                  onCancel={() => {
-                    setModalType(null);
-                    setSelectedItem(null);
-                  }}
-                />
-              )}
-              {modalType === "recyclerDetails" && selectedItem && (
-                <div className={styles.detailsModal}>
-                  <h2>Recycler Details</h2>
-                  <div className={styles.detailsContent}>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Name:</span>
-                      <span>
-                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
-                      </span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Email:</span>
-                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Phone:</span>
-                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Category:</span>
-                      <span>{getRecyclerCategory(selectedItem as Recycler)}</span>
-                    </div>
-                    {(selectedItem as Recycler).wasteManagementInfo && (
-                      <>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Company:</span>
-                          <span>
-                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Location:</span>
-                          <span>
-                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Recycle Type:</span>
-                          <span>
-                            {(selectedItem as Recycler).wasteManagementInfo?.RecycleType || "N/A"}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Waste Category:</span>
-                          <span>
-                            {getWasteCategory(selectedItem as Recycler)}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Waste Classification:</span>
-                          <span>
-                            {getWasteClassification(selectedItem as Recycler)}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Employees:</span>
-                          <span>
-                            {(selectedItem as Recycler).wasteManagementInfo?.employees || "N/A"}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <div className={styles.formActions}>
-                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
-                  </div>
-                </div>
-              )}
-            </Modal>
-          )}
+          ))}
         </div>
-      </div>
-    );
-  }
 
-  // Render Secondary Recyclers
-  if (viewMode === "secondary") {
-    return (
-      <div className={styles.dashboard}>
-        <div className={styles.glassContainer}>
-          <div className={styles.viewHeader}>
-            <button className={styles.backButton} onClick={closeView}>
-              ← Back to Dashboard
-            </button>
-            <h2>Secondary Recyclers Management</h2>
-            <button
-              className={styles.addButton}
-              onClick={() => {
-                setSelectedItem(null);
-                setModalType("addSecondary");
-              }}
+        {items.length === 0 && (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyStateIcon}>📭</div>
+            <h3>No {title.toLowerCase()} found</h3>
+            <p>Try adjusting your search or add a new {type}.</p>
+            <button 
+              className={styles.emptyStateAction}
+              onClick={() => { setSelectedItem(null); setModalType(`add${type === "client" ? "Client" : "Recycler"}`); }}
             >
-              + Add Secondary Recycler
+              + Add {type === "client" ? "Client" : "Recycler"}
             </button>
           </div>
+        )}
 
-          <div className={styles.searchContainer}>
-            <input
-              type="text"
-              placeholder="Search secondary recyclers..."
-              className={styles.searchInput}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+        {modalType && (
+          <Modal onClose={() => { setModalType(null); setSelectedItem(null); }}>
+            <UserForm
+              type={type}
+              initialData={modalType.startsWith("edit") && selectedItem ? selectedItem : undefined}
+              onSubmit={(data) => {
+                if (modalType.startsWith("edit") && selectedItem) {
+                  handleUpdate(collection, selectedItem.id, data);
+                } else {
+                  handleCreate(collection, Date.now().toString(), data);
+                }
+              }}
+              onCancel={() => { setModalType(null); setSelectedItem(null); }}
             />
-          </div>
+          </Modal>
+        )}
 
-          <div className={styles.grid}>
-            {filteredSecondaryRecyclers.map((recycler) => (
-              <div key={recycler.id} className={styles.recyclerCard}>
-                <div className={styles.recyclerHeader}>
-                  {recycler.riderImageUrl ? (
-                    <Image
-                      src={recycler.riderImageUrl}
-                      alt={`${recycler.firstName} ${recycler.LastName}`}
-                      className={styles.avatar}
-                      width={50}
-                      height={50}
-                    />
-                  ) : (
-                    <div className={styles.avatarPlaceholder}>
-                      {recycler.firstName?.charAt(0) || "?"}
-                      {recycler.LastName?.charAt(0) || ""}
-                    </div>
-                  )}
-                  <div>
-                    <h3>
-                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
-                    </h3>
-                    <p className={styles.recyclerType}>Secondary Recycler</p>
-                  </div>
-                </div>
-
-                {recycler.wasteManagementInfo && (
-                  <div className={styles.companyInfo}>
-                    <p>
-                      <strong>Company:</strong>{" "}
-                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
-                    </p>
-                    <p>
-                      <strong>Location:</strong>{" "}
-                      {recycler.wasteManagementInfo.location || "N/A"}
-                    </p>
-                    <p>
-                      <strong>Email:</strong> {recycler.email || "N/A"}
-                    </p>
-                  </div>
-                )}
-
-                <div className={styles.recyclerActions}>
-                  <button
-                    className={styles.viewButton}
-                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
-                  >
-                    Details
-                  </button>
-                  <button
-                    className={styles.editButton}
-                    onClick={() => {
-                      setSelectedItem(recycler);
-                      setModalType("editSecondary");
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className={styles.deleteButton}
-                    onClick={() => handleDelete("Recyclers", recycler.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {filteredSecondaryRecyclers.length === 0 && (
-            <div className={styles.noResults}>No secondary recyclers found.</div>
-          )}
-
-          {/* Modals */}
-          {modalType && (
-            <Modal
-              onClose={() => {
-                setModalType(null);
-                setSelectedItem(null);
-              }}
-            >
-              {(modalType === "editSecondary" || modalType === "addSecondary") && (
-                <UserForm
-                  type="recycler"
-                  initialData={modalType === "editSecondary" && selectedItem ? selectedItem : undefined}
-                  onSubmit={(data) => {
-                    if (modalType === "editSecondary" && selectedItem) {
-                      handleUpdate("Recyclers", selectedItem.id, data);
-                    } else {
-                      handleCreate("Recyclers", Date.now().toString(), data);
-                    }
-                  }}
-                  onCancel={() => {
-                    setModalType(null);
-                    setSelectedItem(null);
-                  }}
-                />
-              )}
-              {modalType === "recyclerDetails" && selectedItem && (
-                <div className={styles.detailsModal}>
-                  <h2>Secondary Recycler Details</h2>
-                  <div className={styles.detailsContent}>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Name:</span>
-                      <span>
-                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
-                      </span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Email:</span>
-                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Phone:</span>
-                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
-                    </div>
-                    {(selectedItem as Recycler).wasteManagementInfo && (
-                      <>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Company:</span>
-                          <span>
-                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Location:</span>
-                          <span>
-                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Waste Categories:</span>
-                          <span>
-                            {getWasteCategory(selectedItem as Recycler)}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Waste Classifications:</span>
-                          <span>
-                            {getWasteClassification(selectedItem as Recycler)}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <div className={styles.formActions}>
-                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
-                  </div>
-                </div>
-              )}
-            </Modal>
-          )}
-        </div>
+        <PopupMenu
+          isOpen={popupState.isOpen}
+          onClose={handleClosePopup}
+          title={popupState.title}
+          item={selectedItem}
+          itemType={popupState.type}
+          onSave={(updatedData) => {
+            if (selectedItem) {
+              handleUpdate(collection, selectedItem.id, updatedData);
+            }
+          }}
+        />
       </div>
-    );
-  }
+      
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+    </div>
+  );
 
-  // Render Tertiary Recyclers
-  if (viewMode === "tertiary") {
-    return (
-      <div className={styles.dashboard}>
-        <div className={styles.glassContainer}>
-          <div className={styles.viewHeader}>
-            <button className={styles.backButton} onClick={closeView}>
-              ← Back to Dashboard
-            </button>
-            <h2>Tertiary Recyclers Management</h2>
-            <button
-              className={styles.addButton}
-              onClick={() => {
-                setSelectedItem(null);
-                setModalType("addTertiary");
-              }}
-            >
-              + Add Tertiary Recycler
-            </button>
-          </div>
+  // Route to appropriate view
+  const views = {
+    clients: () => renderEntityView("Clients Management", filteredData.clients, "client", "Clients", "Add Client"),
+    recyclers: () => renderEntityView("Primary Recyclers Management", filteredData.primary, "recycler", "Recyclers", "Add Recycler"),
+    secondary: () => renderEntityView("Secondary Recyclers Management", filteredData.secondary, "recycler", "Recyclers", "Add Secondary Recycler"),
+    tertiary: () => renderEntityView("Tertiary Recyclers Management", filteredData.tertiary, "recycler", "Recyclers", "Add Tertiary Recycler"),
+  };
 
-          <div className={styles.searchContainer}>
-            <input
-              type="text"
-              placeholder="Search tertiary recyclers..."
-              className={styles.searchInput}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          <div className={styles.grid}>
-            {filteredTertiaryRecyclers.map((recycler) => (
-              <div key={recycler.id} className={styles.recyclerCard}>
-                <div className={styles.recyclerHeader}>
-                  {recycler.riderImageUrl ? (
-                    <Image
-                      src={recycler.riderImageUrl}
-                      alt={`${recycler.firstName} ${recycler.LastName}`}
-                      className={styles.avatar}
-                      width={50}
-                      height={50}
-                    />
-                  ) : (
-                    <div className={styles.avatarPlaceholder}>
-                      {recycler.firstName?.charAt(0) || "?"}
-                      {recycler.LastName?.charAt(0) || ""}
-                    </div>
-                  )}
-                  <div>
-                    <h3>
-                      {recycler.firstName || "Unknown"} {recycler.LastName || ""}
-                    </h3>
-                    <p className={styles.recyclerType}>Tertiary Recycler</p>
-                  </div>
-                </div>
-
-                {recycler.wasteManagementInfo && (
-                  <div className={styles.companyInfo}>
-                    <p>
-                      <strong>Company:</strong>{" "}
-                      {recycler.wasteManagementInfo.CompanyName || "N/A"}
-                    </p>
-                    <p>
-                      <strong>Location:</strong>{" "}
-                      {recycler.wasteManagementInfo.location || "N/A"}
-                    </p>
-                    <p>
-                      <strong>Email:</strong> {recycler.email || "N/A"}
-                    </p>
-                  </div>
-                )}
-
-                <div className={styles.recyclerActions}>
-                  <button
-                    className={styles.viewButton}
-                    onClick={() => openDetailsModal(recycler, "recyclerDetails")}
-                  >
-                    Details
-                  </button>
-                  <button
-                    className={styles.editButton}
-                    onClick={() => {
-                      setSelectedItem(recycler);
-                      setModalType("editTertiary");
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className={styles.deleteButton}
-                    onClick={() => handleDelete("Recyclers", recycler.id)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {filteredTertiaryRecyclers.length === 0 && (
-            <div className={styles.noResults}>No tertiary recyclers found.</div>
-          )}
-
-          {/* Modals */}
-          {modalType && (
-            <Modal
-              onClose={() => {
-                setModalType(null);
-                setSelectedItem(null);
-              }}
-            >
-              {(modalType === "editTertiary" || modalType === "addTertiary") && (
-                <UserForm
-                  type="recycler"
-                  initialData={modalType === "editTertiary" && selectedItem ? selectedItem : undefined}
-                  onSubmit={(data) => {
-                    if (modalType === "editTertiary" && selectedItem) {
-                      handleUpdate("Recyclers", selectedItem.id, data);
-                    } else {
-                      handleCreate("Recyclers", Date.now().toString(), data);
-                    }
-                  }}
-                  onCancel={() => {
-                    setModalType(null);
-                    setSelectedItem(null);
-                  }}
-                />
-              )}
-              {modalType === "recyclerDetails" && selectedItem && (
-                <div className={styles.detailsModal}>
-                  <h2>Tertiary Recycler Details</h2>
-                  <div className={styles.detailsContent}>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Name:</span>
-                      <span>
-                        {(selectedItem as Recycler).firstName || "N/A"} {(selectedItem as Recycler).LastName || ""}
-                      </span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Email:</span>
-                      <span>{(selectedItem as Recycler).email || "N/A"}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailLabel}>Phone:</span>
-                      <span>{getRecyclerPhone(selectedItem as Recycler)}</span>
-                    </div>
-                    {(selectedItem as Recycler).wasteManagementInfo && (
-                      <>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Company:</span>
-                          <span>
-                            {(selectedItem as Recycler).wasteManagementInfo?.CompanyName || "N/A"}
-                          </span>
-                        </div>
-                        <div className={styles.detailRow}>
-                          <span className={styles.detailLabel}>Location:</span>
-                          <span>
-                            {(selectedItem as Recycler).wasteManagementInfo?.location || "N/A"}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <div className={styles.formActions}>
-                    <button onClick={() => setModalType(null)} className={styles.cancelButton}>Close</button>
-                  </div>
-                </div>
-              )}
-            </Modal>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return null;
+  return views[viewMode as keyof typeof views]?.() || null;
 }
