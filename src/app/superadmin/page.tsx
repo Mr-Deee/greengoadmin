@@ -6,16 +6,80 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ref, get, onValue, remove, update } from "firebase/database";
 import styles from "./superadmin.module.css";
-import { WasteManagementRequest, Recycler, Client } from "@/types";
 import Modal from "@/components/Modal";
 import UserForm from "@/components/UserForm";
 import Image from "next/image";
+import { Client, Recycler } from "@/types";
 
 // ============================================================================
 // Types & Constants
 // ============================================================================
 
 type ViewMode = "clients" | "recyclers" | "secondary" | "tertiary" | null;
+
+interface Transaction {
+  amount: number;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  status?: string;
+  timestamp: string;
+  transactionId?: string;
+  type?: string;
+  ref?: string;
+  DepositorName?: string;
+  id?: string;
+}
+
+interface WasteRequest {
+  id: string;
+  Client_id?: string;
+  client_name?: string;
+  client_phone?: string;
+  category?: string;
+  status?: string;
+  weight?: string;
+  weight_kg?: number;
+  calculated_price?: string;
+  payment_method?: string;
+  created_at?: string;
+  WMS_name?: string;
+  WMS_phone?: string;
+  location?: string;
+  [key: string]: unknown;
+}
+
+interface PrimaryRequest {
+  id: string;
+  UserName?: string;
+  address?: string;
+  category?: string;
+  description?: string;
+  grade?: string;
+  status?: string;
+  weight?: string;
+  valuePerKg?: string;
+  total?: string;
+  timestamp?: string;
+  userId?: string;
+  [key: string]: unknown;
+}
+
+interface SecondaryRequest {
+  id: string;
+  UserName?: string;
+  address?: string;
+  category?: string;
+  description?: string;
+  grade?: string;
+  status?: string;
+  weight?: string;
+  valuePerKg?: string;
+  timestamp?: string;
+  userId?: string;
+  [key: string]: unknown;
+}
 
 // ============================================================================
 // Helper Components
@@ -84,15 +148,6 @@ const Toast = ({
   );
 };
 
-// Stats Card Component
-const StatsCard = ({ title, value, icon }: { title: string; value: number; icon: string }) => (
-  <div className={styles.overviewCard}>
-    <div className={styles.overviewCardIcon}>{icon}</div>
-    <h3>{title}</h3>
-    <div className={styles.statValue}>{value.toLocaleString()}</div>
-  </div>
-);
-
 // Entity Card Component
 const EntityCard = ({ 
   entity, 
@@ -114,16 +169,6 @@ const EntityCard = ({
   const phone = isClient ? (entity as Client).phoneNumber : (entity as Recycler).phone || (entity as Recycler).phoneNumber;
   const company = !isClient ? (entity as Recycler).wasteManagementInfo?.CompanyName : null;
   const location = isClient ? (entity as Client).location : (entity as Recycler).wasteManagementInfo?.location;
-
-  const handleViewClick = () => {
-    console.log('View button clicked for entity:', entity, 'type:', type);
-    onView();
-  };
-
-  const handleDeleteClick = () => {
-    console.log('Delete button clicked for entity:', entity);
-    onDelete();
-  };
 
   return (
     <div className={styles.entityCard}>
@@ -149,10 +194,10 @@ const EntityCard = ({
       </div>
 
       <div className={styles.entityActions}>
-        <button className={styles.viewButton} onClick={handleViewClick}>
+        <button className={styles.viewButton} onClick={onView}>
           📋 View / Edit
         </button>
-        <button className={styles.deleteButton} onClick={handleDeleteClick}>
+        <button className={styles.deleteButton} onClick={onDelete}>
           🗑️ Delete
         </button>
       </div>
@@ -160,9 +205,30 @@ const EntityCard = ({
   );
 };
 
+// Detail Row Component
+const DetailRow = ({ label, value }: { label: string; value: string }) => (
+  <div className={styles.popupRow}>
+    <span className={styles.popupLabel}>{label}:</span>
+    <span className={styles.popupValue}>{value}</span>
+  </div>
+);
+
 // ============================================================================
-// Popup Menu Component - WORKING VERSION
+// Popup Menu Component
 // ============================================================================
+
+interface FormData {
+  [key: string]: unknown;
+}
+
+interface PopupMenuProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  item: Client | Recycler | null;
+  itemType: "client" | "recycler";
+  onSave: (updatedData: Record<string, unknown>) => void;
+}
 
 const PopupMenu = ({
   isOpen,
@@ -171,32 +237,17 @@ const PopupMenu = ({
   item,
   itemType,
   onSave,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  item: Client | Recycler | null;
-  itemType: "client" | "recycler";
-  onSave: (updatedData: any) => void;
-}) => {
+}: PopupMenuProps) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<FormData>({});
   const popupRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
-
-  // Debug logging
-  useEffect(() => {
-    console.log('PopupMenu state:', { isOpen, hasItem: !!item, title, itemType });
-  }, [isOpen, item, title, itemType]);
 
   // Handle body scroll and ESC key
   useEffect(() => {
     if (isOpen) {
-      console.log('Popup opening - locking body scroll');
-      // Store current scroll position
       scrollPositionRef.current = window.scrollY;
       
-      // Lock body scroll
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
       document.body.style.top = `-${scrollPositionRef.current}px`;
@@ -206,7 +257,6 @@ const PopupMenu = ({
       
       const handleEsc = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
-          console.log('ESC pressed');
           if (isEditing) {
             setIsEditing(false);
           } else {
@@ -217,7 +267,6 @@ const PopupMenu = ({
       
       window.addEventListener("keydown", handleEsc);
       
-      // Focus management
       setTimeout(() => {
         if (popupRef.current) {
           const focusableElements = popupRef.current.querySelectorAll(
@@ -230,8 +279,6 @@ const PopupMenu = ({
       }, 100);
       
       return () => {
-        console.log('Popup closing - restoring body scroll');
-        // Unlock body scroll
         document.body.style.overflow = '';
         document.body.style.position = '';
         document.body.style.top = '';
@@ -239,9 +286,7 @@ const PopupMenu = ({
         document.body.style.right = '';
         document.body.style.width = '';
         
-        // Restore scroll position
         window.scrollTo(0, scrollPositionRef.current);
-        
         window.removeEventListener("keydown", handleEsc);
       };
     }
@@ -250,14 +295,12 @@ const PopupMenu = ({
   // Set form data when item changes
   useEffect(() => {
     if (isOpen && item) {
-      console.log('Setting form data for item:', item);
       setFormData({ ...item });
     }
   }, [isOpen, item]);
 
   // Handle click outside
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    console.log('Overlay clicked, target:', e.target === e.currentTarget);
     if (e.target === e.currentTarget) {
       if (isEditing) {
         setIsEditing(false);
@@ -267,17 +310,9 @@ const PopupMenu = ({
     }
   };
 
-  // Early return conditions
-  if (!isOpen) {
+  if (!isOpen || !item) {
     return null;
   }
-  
-  if (!item) {
-    console.warn('PopupMenu: No item provided');
-    return null;
-  }
-
-  console.log('Rendering popup menu');
 
   const isClient = itemType === "client" || ("firstName" in item && "LastName" in item);
   const client = isClient ? item as Client : null;
@@ -287,30 +322,20 @@ const PopupMenu = ({
     const { name, value } = e.target;
     if (name.includes(".")) {
       const [parent, child] = name.split(".");
-      setFormData((prev: any) => ({
+      setFormData((prev: FormData) => ({
         ...prev,
-        [parent]: { ...prev[parent], [child]: value },
+        [parent]: { ...(prev[parent] as Record<string, unknown>), [child]: value },
       }));
     } else {
-      setFormData((prev: any) => ({ ...prev, [name]: value }));
+      setFormData((prev: FormData) => ({ ...prev, [name]: value }));
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Submitting form data:', formData);
     onSave(formData);
     setIsEditing(false);
     onClose();
-  };
-
-  const handleClose = () => {
-    console.log('Close button clicked');
-    if (isEditing) {
-      setIsEditing(false);
-    } else {
-      onClose();
-    }
   };
 
   const renderClientForm = () => (
@@ -321,7 +346,7 @@ const PopupMenu = ({
           <input
             type={field === "dateOfBirth" ? "date" : field === "email" ? "email" : "text"}
             name={field}
-            value={formData[field] || ""}
+            value={(formData[field] as string) || ""}
             onChange={handleInputChange}
             required={["firstName", "LastName", "email", "phoneNumber"].includes(field)}
           />
@@ -338,7 +363,7 @@ const PopupMenu = ({
           <input
             type={field === "email" ? "email" : "text"}
             name={field}
-            value={formData[field] || ""}
+            value={(formData[field] as string) || ""}
             onChange={handleInputChange}
             required={["firstName", "LastName", "email"].includes(field)}
           />
@@ -353,7 +378,7 @@ const PopupMenu = ({
           <input
             type={field === "employees" ? "number" : "text"}
             name={`wasteManagementInfo.${field}`}
-            value={formData.wasteManagementInfo?.[field] || ""}
+            value={((formData.wasteManagementInfo as Record<string, unknown>)?.[field] as string) || ""}
             onChange={handleInputChange}
           />
         </div>
@@ -365,15 +390,15 @@ const PopupMenu = ({
           <input
             type="text"
             value={
-              Array.isArray(formData.wasteManagementInfo?.[field])
-                ? formData.wasteManagementInfo[field].join(", ")
-                : formData.wasteManagementInfo?.[field] || ""
+              Array.isArray((formData.wasteManagementInfo as Record<string, unknown>)?.[field])
+                ? ((formData.wasteManagementInfo as Record<string, unknown>)[field] as string[]).join(", ")
+                : ((formData.wasteManagementInfo as Record<string, unknown>)?.[field] as string) || ""
             }
             onChange={(e) =>
-              setFormData((prev: any) => ({
+              setFormData((prev: FormData) => ({
                 ...prev,
                 wasteManagementInfo: {
-                  ...prev.wasteManagementInfo,
+                  ...(prev.wasteManagementInfo as Record<string, unknown>),
                   [field]: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean),
                 },
               }))
@@ -436,65 +461,57 @@ const PopupMenu = ({
     </>
   );
 
-  const DetailRow = ({ label, value }: { label: string; value: string }) => (
-    <div className={styles.popupRow}>
-      <span className={styles.popupLabel}>{label}:</span>
-      <span className={styles.popupValue}>{value}</span>
-    </div>
-  );
+  return (
+    <div className={styles.popupOverlay} onClick={handleOverlayClick}>
+      <div
+        className={styles.popupMenu}
+        ref={popupRef}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={styles.popupHeader}>
+          <h3>{title}</h3>
 
-    return (
-      <div className={styles.popupOverlay} onClick={handleOverlayClick}>
-        <div
-          className={styles.popupMenu}
-          ref={popupRef}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className={styles.popupHeader}>
-            <h3>{title}</h3>
-    
-            <div>
-              {!isEditing && (
-                <button
-                  className={styles.popupEditBtn}
-                  onClick={() => setIsEditing(true)}
-                >
-                  ✏️ Edit
-                </button>
-              )}
-    
-              <button className={styles.popupClose} onClick={onClose}>
-                ×
+          <div>
+            {!isEditing && (
+              <button
+                className={styles.popupEditBtn}
+                onClick={() => setIsEditing(true)}
+              >
+                ✏️ Edit
+              </button>
+            )}
+
+            <button className={styles.popupClose} onClick={onClose}>
+              ×
+            </button>
+          </div>
+        </div>
+
+        {isEditing ? (
+          <form onSubmit={handleSubmit}>
+            {isClient ? renderClientForm() : renderRecyclerForm()}
+
+            <div className={styles.popupFormActions}>
+              <button
+                type="button"
+                className={styles.popupCancelBtn}
+                onClick={() => setIsEditing(false)}
+              >
+                Cancel
+              </button>
+
+              <button type="submit" className={styles.popupSaveBtn}>
+                Save
               </button>
             </div>
+          </form>
+        ) : (
+          <div>
+            {isClient ? renderClientDetails() : renderRecyclerDetails()}
           </div>
-    
-          {isEditing ? (
-            <form onSubmit={handleSubmit}>
-              {isClient ? renderClientForm() : renderRecyclerForm()}
-    
-              <div className={styles.popupFormActions}>
-                <button
-                  type="button"
-                  className={styles.popupCancelBtn}
-                  onClick={() => setIsEditing(false)}
-                >
-                  Cancel
-                </button>
-    
-                <button type="submit" className={styles.popupSaveBtn}>
-                  Save
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div>
-              {isClient ? renderClientDetails() : renderRecyclerDetails()}
-            </div>
-          )}
-        </div>
+        )}
       </div>
-    
+    </div>
   );
 };
 
@@ -506,7 +523,10 @@ export default function SuperAdminPage() {
   const router = useRouter();
   
   // State
-  const [requests, setRequests] = useState<WasteManagementRequest[]>([]);
+  const [requests, setRequests] = useState<WasteRequest[]>([]);
+  const [primaryRequests, setPrimaryRequests] = useState<PrimaryRequest[]>([]);
+  const [secondaryRequests, setSecondaryRequests] = useState<SecondaryRequest[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [recyclers, setRecyclers] = useState<{ primary: Recycler[]; secondary: Recycler[]; tertiary: Recycler[] }>({
     primary: [], secondary: [], tertiary: []
   });
@@ -578,31 +598,105 @@ export default function SuperAdminPage() {
       setRequests(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
     });
 
+    const unsubscribePrimaryRequests = onValue(ref(db, "PrimaryRequestsAvailable"), (snapshot) => {
+      const data = snapshot.val();
+      setPrimaryRequests(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
+    });
+
+    const unsubscribeSecondaryRequests = onValue(ref(db, "SecondaryRequestsAvailable"), (snapshot) => {
+      const data = snapshot.val();
+      setSecondaryRequests(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
+    });
+
+    const unsubscribeTransactions = onValue(ref(db, "transactions"), (snapshot) => {
+      const data = snapshot.val();
+      setTransactions(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
+    });
+
     return () => {
       unsubscribeRecyclers();
       unsubscribeClients();
       unsubscribeRequests();
+      unsubscribePrimaryRequests();
+      unsubscribeSecondaryRequests();
+      unsubscribeTransactions();
     };
   }, [getRecyclerCategory]);
 
-  // Filtered Data
+  // Stats Data
+  const stats = useMemo(() => ({
+    totalRequests: requests.length,
+    totalPrimaryRequests: primaryRequests.length,
+    totalSecondaryRequests: secondaryRequests.length,
+    pendingRequests: requests.filter(r => r.status === "searching" || r.status === "accepted").length,
+    completedRequests: requests.filter(r => r.status === "ended").length,
+    totalRecyclers: recyclers.primary.length + recyclers.secondary.length + recyclers.tertiary.length,
+    totalClients: clients.length,
+    totalTransactions: transactions.length,
+    totalRevenue: transactions.reduce((sum, t) => sum + (t.amount || 0), 0),
+  }), [requests, primaryRequests, secondaryRequests, recyclers, clients, transactions]);
+
+  // Filtered Data - Fixed version without generic issues
   const filteredData = useMemo(() => {
     const term = searchTerm.toLowerCase();
+    if (!term) {
+      return {
+        clients,
+        primary: recyclers.primary,
+        secondary: recyclers.secondary,
+        tertiary: recyclers.tertiary,
+      };
+    }
     
-    const filterEntity = (items: any[], fields: string[]) => {
-      return items.filter(item => 
-        fields.some(field => {
-          const value = field.split('.').reduce((obj, key) => obj?.[key], item);
-          return value?.toString().toLowerCase().includes(term);
-        })
+    // Filter clients
+    const filteredClients = clients.filter(client => {
+      return (
+        client.firstName?.toLowerCase().includes(term) ||
+        client.LastName?.toLowerCase().includes(term) ||
+        client.email?.toLowerCase().includes(term) ||
+        client.phoneNumber?.toLowerCase().includes(term) ||
+        client.location?.toLowerCase().includes(term)
       );
-    };
+    });
+    
+    // Filter primary recyclers
+    const filteredPrimary = recyclers.primary.filter(recycler => {
+      return (
+        recycler.firstName?.toLowerCase().includes(term) ||
+        recycler.LastName?.toLowerCase().includes(term) ||
+        recycler.email?.toLowerCase().includes(term) ||
+        recycler.phone?.toLowerCase().includes(term) ||
+        recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(term)
+      );
+    });
+    
+    // Filter secondary recyclers
+    const filteredSecondary = recyclers.secondary.filter(recycler => {
+      return (
+        recycler.firstName?.toLowerCase().includes(term) ||
+        recycler.LastName?.toLowerCase().includes(term) ||
+        recycler.email?.toLowerCase().includes(term) ||
+        recycler.phone?.toLowerCase().includes(term) ||
+        recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(term)
+      );
+    });
+    
+    // Filter tertiary recyclers
+    const filteredTertiary = recyclers.tertiary.filter(recycler => {
+      return (
+        recycler.firstName?.toLowerCase().includes(term) ||
+        recycler.LastName?.toLowerCase().includes(term) ||
+        recycler.email?.toLowerCase().includes(term) ||
+        recycler.phone?.toLowerCase().includes(term) ||
+        recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(term)
+      );
+    });
 
     return {
-      clients: filterEntity(clients, ["firstName", "LastName", "email", "phoneNumber"]),
-      primary: filterEntity(recyclers.primary, ["firstName", "LastName", "email", "wasteManagementInfo.CompanyName"]),
-      secondary: filterEntity(recyclers.secondary, ["firstName", "LastName", "email", "wasteManagementInfo.CompanyName"]),
-      tertiary: filterEntity(recyclers.tertiary, ["firstName", "LastName", "email", "wasteManagementInfo.CompanyName"]),
+      clients: filteredClients,
+      primary: filteredPrimary,
+      secondary: filteredSecondary,
+      tertiary: filteredTertiary,
     };
   }, [searchTerm, clients, recyclers]);
 
@@ -618,7 +712,7 @@ export default function SuperAdminPage() {
     }
   };
 
-  const handleUpdate = async (collection: string, id: string, updatedData: any) => {
+  const handleUpdate = async (collection: string, id: string, updatedData: Record<string, unknown>) => {
     try {
       await update(ref(db, `${collection}/${id}`), updatedData);
       setPopupState(prev => ({ ...prev, isOpen: false }));
@@ -630,7 +724,7 @@ export default function SuperAdminPage() {
     }
   };
 
-  const handleCreate = async (collection: string, id: string, data: any) => {
+  const handleCreate = async (collection: string, id: string, data: Record<string, unknown>) => {
     try {
       await update(ref(db, `${collection}/${id}`), data);
       setModalType(null);
@@ -643,13 +737,11 @@ export default function SuperAdminPage() {
   };
 
   const openPopupMenu = (item: Client | Recycler, title: string, type: "client" | "recycler") => {
-    console.log('Opening popup menu for:', item, title, type);
     setSelectedItem(item);
     setPopupState({ isOpen: true, title, type });
   };
 
   const handleClosePopup = useCallback(() => {
-    console.log('Closing popup');
     setPopupState(prev => ({ ...prev, isOpen: false }));
     setTimeout(() => setSelectedItem(null), 300);
   }, []);
@@ -666,18 +758,52 @@ export default function SuperAdminPage() {
 
   // Main Dashboard View
   if (viewMode === null) {
-    const totalRecyclers = recyclers.primary.length + recyclers.secondary.length + recyclers.tertiary.length;
-
     return (
       <div className={styles.dashboard}>
         <div className={styles.glassContainer}>
-          <h1 className={styles.title}>Waste Management Dashboard</h1>
+          <h1 className={styles.title}>♻️ Waste Management Dashboard</h1>
+          
+          {/* Stats Overview */}
+          <div className={styles.statsGrid}>
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>📋</div>
+              <div className={styles.statInfo}>
+                <h3>Total Requests</h3>
+                <p>{stats.totalRequests}</p>
+                <small>+{stats.pendingRequests} pending</small>
+              </div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>♻️</div>
+              <div className={styles.statInfo}>
+                <h3>Recyclers</h3>
+                <p>{stats.totalRecyclers}</p>
+                <small>{recyclers.primary.length} Primary</small>
+              </div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>👥</div>
+              <div className={styles.statInfo}>
+                <h3>Clients</h3>
+                <p>{stats.totalClients}</p>
+                <small>Registered users</small>
+              </div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>💰</div>
+              <div className={styles.statInfo}>
+                <h3>Revenue</h3>
+                <p>₵{stats.totalRevenue.toLocaleString()}</p>
+                <small>From {stats.totalTransactions} txns</small>
+              </div>
+            </div>
+          </div>
           
           <div className={styles.categoryGrid}>
             <div className={styles.categoryCard} onClick={() => setViewMode("clients")}>
               <div className={styles.categoryIcon}>👥</div>
               <h3>Clients</h3>
-              <p className={styles.categoryCount}>{clients.length} registered</p>
+              <p className={styles.categoryCount}>{filteredData.clients.length} registered</p>
             </div>
             <div className={styles.categoryCard} onClick={() => setViewMode("recyclers")}>
               <div className={styles.categoryIcon}>♻️</div>
@@ -696,11 +822,26 @@ export default function SuperAdminPage() {
             </div>
           </div>
 
-          {/* <div className={styles.overviewCards}>
-            <StatsCard title="Total Requests" value={requests.length} icon="📋" />
-            <StatsCard title="Total Recyclers" value={totalRecyclers} icon="♻️" />
-            <StatsCard title="Registered Clients" value={clients.length} icon="👥" />
-          </div> */}
+          {/* Recent Activity Section */}
+          <div className={styles.recentActivity}>
+            <h2>Recent Activity</h2>
+            <div className={styles.activityList}>
+              {requests.slice(0, 5).map((req) => (
+                <div key={req.id} className={styles.activityItem}>
+                  <span className={styles.activityIcon}>
+                    {req.status === "ended" ? "✅" : req.status === "accepted" ? "🚚" : "⏳"}
+                  </span>
+                  <div className={styles.activityContent}>
+                    <p><strong>{req.client_name || "Unknown"}</strong> - {req.category || "General"}</p>
+                    <small>{req.status} • {req.weight_kg || req.weight || "?"} kg</small>
+                  </div>
+                  <span className={styles.activityTime}>
+                    {req.created_at ? new Date(req.created_at).toLocaleDateString() : "Recent"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         
         {toast && <Toast {...toast} onClose={() => setToast(null)} />}
@@ -749,6 +890,11 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
+        <div className={styles.statsBar}>
+          <span>Total: {items.length} items</span>
+          {searchTerm && <span>Filtered: {items.length} results</span>}
+        </div>
+
         <div className={styles.grid}>
           {items.map((item) => (
             <EntityCard
@@ -780,7 +926,7 @@ export default function SuperAdminPage() {
             <UserForm
               type={type}
               initialData={modalType.startsWith("edit") && selectedItem ? selectedItem : undefined}
-              onSubmit={(data) => {
+              onSubmit={(data: Record<string, unknown>) => {
                 if (modalType.startsWith("edit") && selectedItem) {
                   handleUpdate(collection, selectedItem.id, data);
                 } else {
@@ -798,7 +944,7 @@ export default function SuperAdminPage() {
           title={popupState.title}
           item={selectedItem}
           itemType={popupState.type}
-          onSave={(updatedData) => {
+          onSave={(updatedData: Record<string, unknown>) => {
             if (selectedItem) {
               handleUpdate(collection, selectedItem.id, updatedData);
             }
