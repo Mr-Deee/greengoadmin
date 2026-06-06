@@ -1,0 +1,695 @@
+/* Container */
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+  }
+  
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .header h1 {
+    font-size: 2rem;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+  }
+  
+  .header p {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+  }
+  
+  .createButton {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  
+  .createButton:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+  
+  /* Loading State */
+  .loadingContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  
+  .spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  /* Statistics Cards */
+  .statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  
+  .statCard {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+  }
+  
+  .statCard:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  .statIcon {
+    font-size: 2.5rem;
+  }
+  
+  .statInfo {
+    flex: 1;
+  }
+  
+  .statValue {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #2c3e50;
+  }
+  
+  .statLabel {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    margin-top: 0.25rem;
+  }
+  
+  .statCard.active .statValue {
+    color: #27ae60;
+  }
+  
+  .statCard.pending .statValue {
+    color: #f39c12;
+  }
+  
+  .statCard.suspended .statValue {
+    color: #e74c3c;
+  }
+  
+  /* Role Distribution */
+  .roleDistribution {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .roleDistribution h3 {
+    margin-bottom: 1rem;
+    color: #2c3e50;
+  }
+  
+  .roleBars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .roleBarItem {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  
+  .roleName {
+    width: 150px;
+    font-size: 0.9rem;
+    color: #2c3e50;
+  }
+  
+  .roleBarContainer {
+    flex: 1;
+    height: 24px;
+    background: #ecf0f1;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  
+  .roleBar {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    transition: width 0.3s ease;
+    border-radius: 12px;
+  }
+  
+  .roleCount {
+    width: 40px;
+    font-weight: bold;
+    color: #2c3e50;
+  }
+  
+  /* Filters Bar */
+  .filtersBar {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+  
+  .searchWrapper {
+    flex: 1;
+    position: relative;
+    min-width: 200px;
+  }
+  
+  .searchIcon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.2rem;
+  }
+  
+  .searchInput {
+    width: 100%;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    transition: border-color 0.2s;
+  }
+  
+  .searchInput:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+  
+  .filterSelect {
+    padding: 0.75rem 1rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  
+  .filterSelect:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+  
+  /* Table Container */
+  .tableContainer {
+    background: white;
+    border-radius: 1rem;
+    overflow-x: auto;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .userTable {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .userTable thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  }
+  
+  .userTable th {
+    padding: 1rem;
+    text-align: left;
+    font-weight: 600;
+  }
+  
+  .userTable td {
+    padding: 1rem;
+    border-bottom: 1px solid #ecf0f1;
+  }
+  
+  .userTable tbody tr:hover {
+    background: #f8f9fa;
+  }
+  
+  /* User Cell */
+  .userCell {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  
+  .userAvatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 1.2rem;
+  }
+  
+  .userInfo {
+    flex: 1;
+  }
+  
+  .userName {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+  }
+  
+  .userEmail {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+  }
+  
+  /* Role Badge */
+  .roleBadge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    background: #f0f0f0;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    color: #2c3e50;
+  }
+  
+  /* Status Badge */
+  .statusBadge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  
+  .statusBadge.active {
+    background: #d5f4e6;
+    color: #27ae60;
+  }
+  
+  .statusBadge.pending_approval {
+    background: #feebcc;
+    color: #f39c12;
+  }
+  
+  .statusBadge.suspended {
+    background: #f8d7da;
+    color: #e74c3c;
+  }
+  
+  /* Action Buttons */
+  .actionsCell {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .editBtn,
+  .suspendBtn,
+  .deleteBtn {
+    padding: 0.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: transform 0.2s;
+    font-size: 1rem;
+  }
+  
+  .editBtn {
+    background: #3498db;
+    color: white;
+  }
+  
+  .editBtn:hover {
+    transform: scale(1.1);
+  }
+  
+  .suspendBtn {
+    background: #f39c12;
+    color: white;
+  }
+  
+  .suspendBtn:hover {
+    transform: scale(1.1);
+  }
+  
+  .deleteBtn {
+    background: #e74c3c;
+    color: white;
+  }
+  
+  .deleteBtn:hover {
+    transform: scale(1.1);
+  }
+  
+  /* Empty State */
+  .emptyState {
+    text-align: center;
+    padding: 4rem 2rem;
+  }
+  
+  .emptyIcon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+  }
+  
+  .emptyState h3 {
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+  }
+  
+  .emptyState p {
+    color: #7f8c8d;
+  }
+  
+  /* Modal */
+  .modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  .modalContent {
+    background: white;
+    border-radius: 1rem;
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease;
+  }
+  
+  @keyframes slideUp {
+    from {
+      transform: translateY(50px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  
+  .modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  .modalHeader h2 {
+    color: #2c3e50;
+    font-size: 1.5rem;
+  }
+  
+  .closeBtn {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    cursor: pointer;
+    color: #7f8c8d;
+    transition: color 0.2s;
+  }
+  
+  .closeBtn:hover {
+    color: #2c3e50;
+  }
+  
+  /* Form */
+  .form {
+    padding: 1.5rem;
+  }
+  
+  .formGroup {
+    margin-bottom: 1.5rem;
+  }
+  
+  .formGroup label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #2c3e50;
+  }
+  
+  .formGroup input,
+  .formGroup select,
+  .formGroup textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    transition: border-color 0.2s;
+  }
+  
+  .formGroup input:focus,
+  .formGroup select:focus,
+  .formGroup textarea:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+  
+  .formGroup input:disabled {
+    background: #f5f5f5;
+    cursor: not-allowed;
+  }
+  
+  .formGroup small {
+    display: block;
+    margin-top: 0.25rem;
+    color: #7f8c8d;
+    font-size: 0.85rem;
+  }
+  
+  .formRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  
+  /* Role Info */
+  .roleInfo {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  
+  .roleIcon {
+    font-size: 2rem;
+  }
+  
+  .roleInfo strong {
+    display: block;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+  }
+  
+  .roleInfo p {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .roleInfo small {
+    color: #95a5a6;
+    font-size: 0.85rem;
+  }
+  
+  /* Form Actions */
+  .formActions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+  }
+  
+  .cancelBtn,
+  .submitBtn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+  
+  .cancelBtn {
+    background: #ecf0f1;
+    color: #7f8c8d;
+  }
+  
+  .cancelBtn:hover {
+    transform: translateY(-2px);
+  }
+  
+  .submitBtn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  }
+  
+  .submitBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+  
+  /* Toast Notification */
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    padding: 1rem 1.5rem;
+    border-radius: 0.5rem;
+    color: white;
+    font-weight: 500;
+    animation: slideInRight 0.3s ease;
+    z-index: 1100;
+  }
+  
+  .toast.success {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+  }
+  
+  .toast.error {
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+  }
+  
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+  
+    .header {
+      flex-direction: column;
+      gap: 1rem;
+      text-align: center;
+    }
+  
+    .header h1 {
+      font-size: 1.5rem;
+    }
+  
+    .statsGrid {
+      grid-template-columns: 1fr;
+    }
+  
+    .filtersBar {
+      flex-direction: column;
+    }
+  
+    .formRow {
+      grid-template-columns: 1fr;
+    }
+  
+    .userTable {
+      font-size: 0.85rem;
+    }
+  
+    .userTable th,
+    .userTable td {
+      padding: 0.75rem;
+    }
+  
+    .actionsCell {
+      flex-wrap: wrap;
+    }
+  
+    .modalContent {
+      width: 95%;
+      margin: 1rem;
+    }
+  
+    .toast {
+      bottom: 1rem;
+      right: 1rem;
+      left: 1rem;
+    }
+  }
+  
+  /* Scrollbar Styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }

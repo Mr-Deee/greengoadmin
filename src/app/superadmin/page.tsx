@@ -1,968 +1,281 @@
-"use client";
+'use client';
 
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { useRouter } from "next/navigation";
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { ref, get, onValue, remove, update } from "firebase/database";
-import styles from "./superadmin.module.css";
-import Modal from "@/components/Modal";
-import UserForm from "@/components/UserForm";
-import Image from "next/image";
-import { Client, Recycler } from "@/types";
-
-// ============================================================================
-// Types & Constants
-// ============================================================================
-
-type ViewMode = "clients" | "recyclers" | "secondary" | "tertiary" | null;
-
-interface Transaction {
-  amount: number;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  phone?: string;
-  status?: string;
-  timestamp: string;
-  transactionId?: string;
-  type?: string;
-  ref?: string;
-  DepositorName?: string;
-  id?: string;
-}
-
-interface WasteRequest {
-  id: string;
-  Client_id?: string;
-  client_name?: string;
-  client_phone?: string;
-  category?: string;
-  status?: string;
-  weight?: string;
-  weight_kg?: number;
-  calculated_price?: string;
-  payment_method?: string;
-  created_at?: string;
-  WMS_name?: string;
-  WMS_phone?: string;
-  location?: string;
-  [key: string]: unknown;
-}
-
-interface PrimaryRequest {
-  id: string;
-  UserName?: string;
-  address?: string;
-  category?: string;
-  description?: string;
-  grade?: string;
-  status?: string;
-  weight?: string;
-  valuePerKg?: string;
-  total?: string;
-  timestamp?: string;
-  userId?: string;
-  [key: string]: unknown;
-}
-
-interface SecondaryRequest {
-  id: string;
-  UserName?: string;
-  address?: string;
-  category?: string;
-  description?: string;
-  grade?: string;
-  status?: string;
-  weight?: string;
-  valuePerKg?: string;
-  timestamp?: string;
-  userId?: string;
-  [key: string]: unknown;
-}
-
-// ============================================================================
-// Helper Components
-// ============================================================================
-
-// Image Component with Fallback
-const AvatarWithFallback = ({ 
-  src, 
-  name, 
-  size = 52 
-}: { 
-  src?: string; 
-  name: string; 
-  size?: number;
-}) => {
-  const [imgError, setImgError] = useState(false);
-  const initials = name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
-
-  if (imgError || !src) {
-    return (
-      <div 
-        className={styles.avatarPlaceholder}
-        style={{ width: size, height: size, fontSize: size * 0.4 }}
-      >
-        {initials || "?"}
-      </div>
-    );
-  }
-
-  return (
-    <Image
-      src={src}
-      alt={name}
-      className={styles.avatar}
-      width={size}
-      height={size}
-      onError={() => setImgError(true)}
-      unoptimized={false}
-    />
-  );
-};
-
-// Toast Notification Component
-const Toast = ({ 
-  message, 
-  type, 
-  onClose 
-}: { 
-  message: string; 
-  type: "success" | "error" | "info";
-  onClose: () => void;
-}) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 5000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  const icons = { success: "✅", error: "❌", info: "ℹ️" };
-  
-  return (
-    <div className={`${styles.toast} ${styles[type]}`}>
-      <span className={styles.toastIcon}>{icons[type]}</span>
-      <span className={styles.toastMessage}>{message}</span>
-      <button onClick={onClose} className={styles.toastClose}>×</button>
-    </div>
-  );
-};
-
-// Entity Card Component
-const EntityCard = ({ 
-  entity, 
-  type, 
-  onView, 
-  onDelete 
-}: { 
-  entity: Client | Recycler;
-  type: "client" | "recycler";
-  onView: () => void;
-  onDelete: () => void;
-}) => {
-  const isClient = type === "client";
-  const name = isClient 
-    ? `${(entity as Client).firstName || "Unknown"} ${(entity as Client).LastName || ""}`
-    : `${(entity as Recycler).firstName || "Unknown"} ${(entity as Recycler).LastName || ""}`;
-  
-  const email = isClient ? (entity as Client).email : (entity as Recycler).email;
-  const phone = isClient ? (entity as Client).phoneNumber : (entity as Recycler).phone || (entity as Recycler).phoneNumber;
-  const company = !isClient ? (entity as Recycler).wasteManagementInfo?.CompanyName : null;
-  const location = isClient ? (entity as Client).location : (entity as Recycler).wasteManagementInfo?.location;
-
-  return (
-    <div className={styles.entityCard}>
-      <div className={styles.entityHeader}>
-        <AvatarWithFallback 
-          src={!isClient ? (entity as Recycler).riderImageUrl : undefined}
-          name={name}
-          size={52}
-        />
-        <div className={styles.entityHeaderContent}>
-          <h3>{name}</h3>
-          <span className={styles.entityType}>
-            {isClient ? "👤 Client" : `♻️ ${(entity as Recycler).WMSTYPE || "Recycler"}`}
-          </span>
-        </div>
-      </div>
-
-      <div className={styles.entityInfo}>
-        {company && <p><strong>Company:</strong> {company}</p>}
-        <p><strong>Email:</strong> {email || "N/A"}</p>
-        <p><strong>Phone:</strong> {phone || "N/A"}</p>
-        {location && <p><strong>Location:</strong> {location}</p>}
-      </div>
-
-      <div className={styles.entityActions}>
-        <button className={styles.viewButton} onClick={onView}>
-          📋 View / Edit
-        </button>
-        <button className={styles.deleteButton} onClick={onDelete}>
-          🗑️ Delete
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// Detail Row Component
-const DetailRow = ({ label, value }: { label: string; value: string }) => (
-  <div className={styles.popupRow}>
-    <span className={styles.popupLabel}>{label}:</span>
-    <span className={styles.popupValue}>{value}</span>
-  </div>
-);
-
-// ============================================================================
-// Popup Menu Component
-// ============================================================================
-
-interface FormData {
-  [key: string]: unknown;
-}
-
-interface PopupMenuProps {
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  item: Client | Recycler | null;
-  itemType: "client" | "recycler";
-  onSave: (updatedData: Record<string, unknown>) => void;
-}
-
-const PopupMenu = ({
-  isOpen,
-  onClose,
-  title,
-  item,
-  itemType,
-  onSave,
-}: PopupMenuProps) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<FormData>({});
-  const popupRef = useRef<HTMLDivElement>(null);
-  const scrollPositionRef = useRef<number>(0);
-
-  // Handle body scroll and ESC key
-  useEffect(() => {
-    if (isOpen) {
-      scrollPositionRef.current = window.scrollY;
-      
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${scrollPositionRef.current}px`;
-      document.body.style.left = '0';
-      document.body.style.right = '0';
-      document.body.style.width = '100%';
-      
-      const handleEsc = (e: KeyboardEvent) => {
-        if (e.key === "Escape") {
-          if (isEditing) {
-            setIsEditing(false);
-          } else {
-            onClose();
-          }
-        }
-      };
-      
-      window.addEventListener("keydown", handleEsc);
-      
-      setTimeout(() => {
-        if (popupRef.current) {
-          const focusableElements = popupRef.current.querySelectorAll(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-          );
-          if (focusableElements.length) {
-            (focusableElements[0] as HTMLElement).focus();
-          }
-        }
-      }, 100);
-      
-      return () => {
-        document.body.style.overflow = '';
-        document.body.style.position = '';
-        document.body.style.top = '';
-        document.body.style.left = '';
-        document.body.style.right = '';
-        document.body.style.width = '';
-        
-        window.scrollTo(0, scrollPositionRef.current);
-        window.removeEventListener("keydown", handleEsc);
-      };
-    }
-  }, [isOpen, onClose, isEditing]);
-
-  // Set form data when item changes
-  useEffect(() => {
-    if (isOpen && item) {
-      setFormData({ ...item });
-    }
-  }, [isOpen, item]);
-
-  // Handle click outside
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      if (isEditing) {
-        setIsEditing(false);
-      } else {
-        onClose();
-      }
-    }
-  };
-
-  if (!isOpen || !item) {
-    return null;
-  }
-
-  const isClient = itemType === "client" || ("firstName" in item && "LastName" in item);
-  const client = isClient ? item as Client : null;
-  const recycler = !isClient ? item as Recycler : null;
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    if (name.includes(".")) {
-      const [parent, child] = name.split(".");
-      setFormData((prev: FormData) => ({
-        ...prev,
-        [parent]: { ...(prev[parent] as Record<string, unknown>), [child]: value },
-      }));
-    } else {
-      setFormData((prev: FormData) => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-    setIsEditing(false);
-    onClose();
-  };
-
-  const renderClientForm = () => (
-    <>
-      {["firstName", "LastName", "email", "phoneNumber", "location", "SettlementType", "gpsAddress", "ghCardNo", "dateOfBirth"].map((field) => (
-        <div key={field} className={styles.popupFormGroup}>
-          <label>{field.replace(/([A-Z])/g, ' $1').trim()}</label>
-          <input
-            type={field === "dateOfBirth" ? "date" : field === "email" ? "email" : "text"}
-            name={field}
-            value={(formData[field] as string) || ""}
-            onChange={handleInputChange}
-            required={["firstName", "LastName", "email", "phoneNumber"].includes(field)}
-          />
-        </div>
-      ))}
-    </>
-  );
-
-  const renderRecyclerForm = () => (
-    <>
-      {["firstName", "LastName", "email", "phone"].map((field) => (
-        <div key={field} className={styles.popupFormGroup}>
-          <label>{field.replace(/([A-Z])/g, ' $1').trim()}</label>
-          <input
-            type={field === "email" ? "email" : "text"}
-            name={field}
-            value={(formData[field] as string) || ""}
-            onChange={handleInputChange}
-            required={["firstName", "LastName", "email"].includes(field)}
-          />
-        </div>
-      ))}
-      
-      <div className={styles.popupDividerText}>Waste Management Info</div>
-      
-      {["CompanyName", "location", "RecycleType", "employees"].map((field) => (
-        <div key={field} className={styles.popupFormGroup}>
-          <label>{field}</label>
-          <input
-            type={field === "employees" ? "number" : "text"}
-            name={`wasteManagementInfo.${field}`}
-            value={((formData.wasteManagementInfo as Record<string, unknown>)?.[field] as string) || ""}
-            onChange={handleInputChange}
-          />
-        </div>
-      ))}
-      
-      {["WasteCategory", "WasteClassification"].map((field) => (
-        <div key={field} className={styles.popupFormGroup}>
-          <label>{field} (comma separated)</label>
-          <input
-            type="text"
-            value={
-              Array.isArray((formData.wasteManagementInfo as Record<string, unknown>)?.[field])
-                ? ((formData.wasteManagementInfo as Record<string, unknown>)[field] as string[]).join(", ")
-                : ((formData.wasteManagementInfo as Record<string, unknown>)?.[field] as string) || ""
-            }
-            onChange={(e) =>
-              setFormData((prev: FormData) => ({
-                ...prev,
-                wasteManagementInfo: {
-                  ...(prev.wasteManagementInfo as Record<string, unknown>),
-                  [field]: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean),
-                },
-              }))
-            }
-          />
-        </div>
-      ))}
-    </>
-  );
-
-  const renderClientDetails = () => (
-    <>
-      <DetailRow label="Full Name" value={`${client?.firstName || "N/A"} ${client?.LastName || ""}`} />
-      <DetailRow label="Email" value={client?.email || "N/A"} />
-      <DetailRow label="Phone" value={client?.phoneNumber || "N/A"} />
-      <DetailRow label="Location" value={client?.location || "N/A"} />
-      <DetailRow label="Settlement Type" value={client?.SettlementType || "N/A"} />
-      <DetailRow label="GPS Address" value={client?.gpsAddress || "N/A"} />
-      <DetailRow label="GH Card No" value={client?.ghCardNo || "N/A"} />
-      <DetailRow label="Date of Birth" value={client?.dateOfBirth || "N/A"} />
-    </>
-  );
-
-  const renderRecyclerDetails = () => (
-    <>
-      <DetailRow label="Full Name" value={`${recycler?.firstName || "N/A"} ${recycler?.LastName || ""}`} />
-      <DetailRow label="Email" value={recycler?.email || "N/A"} />
-      <DetailRow label="Phone" value={recycler?.phone || recycler?.phoneNumber || "N/A"} />
-      <DetailRow label="Category" value={recycler?.WMSCATEGORY || recycler?.wmsCategory || recycler?.wasteManagementInfo?.RecycleType || "Primary"} />
-      
-      {recycler?.wasteManagementInfo && (
-        <>
-          <div className={styles.popupDivider} />
-          <DetailRow label="Company" value={recycler.wasteManagementInfo.CompanyName || "N/A"} />
-          <DetailRow label="Location" value={recycler.wasteManagementInfo.location || "N/A"} />
-          <DetailRow label="Recycle Type" value={recycler.wasteManagementInfo.RecycleType || "N/A"} />
-          <DetailRow 
-            label="Waste Category" 
-            value={
-              recycler.wasteManagementInfo.WasteCategory
-                ? Array.isArray(recycler.wasteManagementInfo.WasteCategory)
-                  ? recycler.wasteManagementInfo.WasteCategory.join(", ")
-                  : recycler.wasteManagementInfo.WasteCategory
-                : "N/A"
-            }
-          />
-          <DetailRow 
-            label="Waste Classification" 
-            value={
-              recycler.wasteManagementInfo.WasteClassification
-                ? Array.isArray(recycler.wasteManagementInfo.WasteClassification)
-                  ? recycler.wasteManagementInfo.WasteClassification.join(", ")
-                  : recycler.wasteManagementInfo.WasteClassification
-                : "N/A"
-            }
-          />
-          <DetailRow label="Employees" value={recycler.wasteManagementInfo.employees?.toString() || "N/A"} />
-        </>
-      )}
-    </>
-  );
-
-  return (
-    <div className={styles.popupOverlay} onClick={handleOverlayClick}>
-      <div
-        className={styles.popupMenu}
-        ref={popupRef}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className={styles.popupHeader}>
-          <h3>{title}</h3>
-
-          <div>
-            {!isEditing && (
-              <button
-                className={styles.popupEditBtn}
-                onClick={() => setIsEditing(true)}
-              >
-                ✏️ Edit
-              </button>
-            )}
-
-            <button className={styles.popupClose} onClick={onClose}>
-              ×
-            </button>
-          </div>
-        </div>
-
-        {isEditing ? (
-          <form onSubmit={handleSubmit}>
-            {isClient ? renderClientForm() : renderRecyclerForm()}
-
-            <div className={styles.popupFormActions}>
-              <button
-                type="button"
-                className={styles.popupCancelBtn}
-                onClick={() => setIsEditing(false)}
-              >
-                Cancel
-              </button>
-
-              <button type="submit" className={styles.popupSaveBtn}>
-                Save
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div>
-            {isClient ? renderClientDetails() : renderRecyclerDetails()}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ============================================================================
-// Main Component
-// ============================================================================
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import Link from 'next/link';
+import { db } from '@/lib/firebase';
+import { ref, get, onValue } from 'firebase/database';
+import styles from './superadmin.module.css';
 
 export default function SuperAdminPage() {
-  const router = useRouter();
-  
-  // State
-  const [requests, setRequests] = useState<WasteRequest[]>([]);
-  const [primaryRequests, setPrimaryRequests] = useState<PrimaryRequest[]>([]);
-  const [secondaryRequests, setSecondaryRequests] = useState<SecondaryRequest[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [recyclers, setRecyclers] = useState<{ primary: Recycler[]; secondary: Recycler[]; tertiary: Recycler[] }>({
-    primary: [], secondary: [], tertiary: []
+  const { user, loading } = useAuth('super_admin');
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    activeRecyclers: 0,
+    totalWasteKg: 0,
+    totalRevenue: 0,
+    pendingRequests: 0,
+    completedRequests: 0
   });
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>(null);
-  const [selectedItem, setSelectedItem] = useState<Client | Recycler | null>(null);
-  const [popupState, setPopupState] = useState({ isOpen: false, title: "", type: "client" as "client" | "recycler" });
-  const [modalType, setModalType] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  // Helper Functions
-  const showToast = useCallback((message: string, type: "success" | "error" | "info") => {
-    setToast({ message, type });
-  }, []);
-
-  const getRecyclerCategory = useCallback((recycler: Recycler): "primary" | "secondary" | "tertiary" => {
-    const category = recycler.WMSCATEGORY || recycler.wmsCategory || recycler.wasteManagementInfo?.RecycleType;
-    if (category === "Secondary") return "secondary";
-    if (category === "Tertiary") return "tertiary";
-    return "primary";
-  }, []);
-
-  // Authentication Check
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        router.push("/login");
-        return;
-      }
+    if (!loading && user) {
+      fetchAllStats();
+    }
+  }, [loading, user]);
 
-      try {
-        const snapshot = await get(ref(db, `Admin/${user.uid}`));
-        if (snapshot.val()?.role !== "super_admin") {
-          router.push("/unauthorized");
-        } else {
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error("Error checking admin role:", error);
-        router.push("/login");
-      }
-    });
-
-    return () => unsubscribe();
-  }, [router]);
-
-  // Data Fetching
-  useEffect(() => {
-    const unsubscribeRecyclers = onValue(ref(db, "Recyclers"), (snapshot) => {
-      const data = snapshot.val();
-      const recyclersArray: Recycler[] = data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : [];
+  const fetchAllStats = async () => {
+    setStatsLoading(true);
+    
+    try {
+      // Fetch counts from different database nodes
       
-      const categorized = { primary: [] as Recycler[], secondary: [] as Recycler[], tertiary: [] as Recycler[] };
-      recyclersArray.forEach((recycler) => {
-        categorized[getRecyclerCategory(recycler)].push(recycler);
+      // 1. Total Users (from Clients node)
+      const clientsRef = ref(db, 'Clients');
+      const clientsSnapshot = await get(clientsRef);
+      const totalClients = clientsSnapshot.exists() ? Object.keys(clientsSnapshot.val()).length : 0;
+      
+      // 2. Active Recyclers (from Recyclers node where detailsComp is true)
+      const recyclersRef = ref(db, 'Recyclers');
+      const recyclersSnapshot = await get(recyclersRef);
+      let activeRecyclers = 0;
+      let totalRecyclers = 0;
+      if (recyclersSnapshot.exists()) {
+        const recyclers = recyclersSnapshot.val();
+        totalRecyclers = Object.keys(recyclers).length;
+        activeRecyclers = Object.values(recyclers).filter((r: any) => r.detailsComp === true).length;
+      }
+      
+      // 3. Total Waste Collected and Revenue from ClientRequest node (ended status)
+      const requestsRef = ref(db, 'ClientRequest');
+      const requestsSnapshot = await get(requestsRef);
+      let totalWasteKg = 0;
+      let totalRevenue = 0;
+      let completedRequests = 0;
+      let pendingRequests = 0;
+      
+      if (requestsSnapshot.exists()) {
+        const requests = requestsSnapshot.val();
+        Object.values(requests).forEach((request: any) => {
+          if (request.status === 'ended') {
+            completedRequests++;
+            // Add weight if available
+            if (request.weight_kg) {
+              totalWasteKg += Number(request.weight_kg);
+            } else if (request.weight && !isNaN(Number(request.weight))) {
+              totalWasteKg += Number(request.weight);
+            }
+            // Add revenue if calculated_price exists
+            if (request.calculated_price) {
+              totalRevenue += Number(request.calculated_price);
+            }
+          } else if (request.status === 'searching' || request.status === 'accepted' || request.status === 'onride' || request.status === 'arrived') {
+            pendingRequests++;
+          }
+        });
+      }
+      
+      // 4. Also include Admin users (if any)
+      const adminRef = ref(db, 'Admin');
+      const adminSnapshot = await get(adminRef);
+      const totalAdmins = adminSnapshot.exists() ? Object.keys(adminSnapshot.val()).length : 0;
+      
+      setStats({
+        totalUsers: totalClients + totalRecyclers + totalAdmins,
+        activeRecyclers: activeRecyclers,
+        totalWasteKg: Math.round(totalWasteKg * 100) / 100,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        pendingRequests: pendingRequests,
+        completedRequests: completedRequests
       });
-      setRecyclers(categorized);
-    });
+      
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
 
-    const unsubscribeClients = onValue(ref(db, "Clients"), (snapshot) => {
-      const data = snapshot.val();
-      setClients(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
-    });
-
-    const unsubscribeRequests = onValue(ref(db, "ClientRequest"), (snapshot) => {
-      const data = snapshot.val();
-      setRequests(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
-    });
-
-    const unsubscribePrimaryRequests = onValue(ref(db, "PrimaryRequestsAvailable"), (snapshot) => {
-      const data = snapshot.val();
-      setPrimaryRequests(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
-    });
-
-    const unsubscribeSecondaryRequests = onValue(ref(db, "SecondaryRequestsAvailable"), (snapshot) => {
-      const data = snapshot.val();
-      setSecondaryRequests(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
-    });
-
-    const unsubscribeTransactions = onValue(ref(db, "transactions"), (snapshot) => {
-      const data = snapshot.val();
-      setTransactions(data ? Object.keys(data).map((key) => ({ id: key, ...data[key] })) : []);
-    });
-
-    return () => {
-      unsubscribeRecyclers();
-      unsubscribeClients();
-      unsubscribeRequests();
-      unsubscribePrimaryRequests();
-      unsubscribeSecondaryRequests();
-      unsubscribeTransactions();
-    };
-  }, [getRecyclerCategory]);
-
-  // Stats Data
-  const stats = useMemo(() => ({
-    totalRequests: requests.length,
-    totalPrimaryRequests: primaryRequests.length,
-    totalSecondaryRequests: secondaryRequests.length,
-    pendingRequests: requests.filter(r => r.status === "searching" || r.status === "accepted").length,
-    completedRequests: requests.filter(r => r.status === "ended").length,
-    totalRecyclers: recyclers.primary.length + recyclers.secondary.length + recyclers.tertiary.length,
-    totalClients: clients.length,
-    totalTransactions: transactions.length,
-    totalRevenue: transactions.reduce((sum, t) => sum + (t.amount || 0), 0),
-  }), [requests, primaryRequests, secondaryRequests, recyclers, clients, transactions]);
-
-  // Filtered Data - Fixed version without generic issues
-  const filteredData = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    if (!term) {
-      return {
-        clients,
-        primary: recyclers.primary,
-        secondary: recyclers.secondary,
-        tertiary: recyclers.tertiary,
+  // Set up real-time listeners for live updates
+  useEffect(() => {
+    if (!loading && user) {
+      // Listen for real-time updates to ClientRequest
+      const requestsRef = ref(db, 'ClientRequest');
+      const unsubscribeRequests = onValue(requestsRef, async () => {
+        await fetchAllStats();
+      });
+      
+      // Listen for real-time updates to Recyclers
+      const recyclersRef = ref(db, 'Recyclers');
+      const unsubscribeRecyclers = onValue(recyclersRef, async () => {
+        await fetchAllStats();
+      });
+      
+      // Listen for real-time updates to Clients
+      const clientsRef = ref(db, 'Clients');
+      const unsubscribeClients = onValue(clientsRef, async () => {
+        await fetchAllStats();
+      });
+      
+      return () => {
+        unsubscribeRequests();
+        unsubscribeRecyclers();
+        unsubscribeClients();
       };
     }
-    
-    // Filter clients
-    const filteredClients = clients.filter(client => {
-      return (
-        client.firstName?.toLowerCase().includes(term) ||
-        client.LastName?.toLowerCase().includes(term) ||
-        client.email?.toLowerCase().includes(term) ||
-        client.phoneNumber?.toLowerCase().includes(term) ||
-        client.location?.toLowerCase().includes(term)
-      );
-    });
-    
-    // Filter primary recyclers
-    const filteredPrimary = recyclers.primary.filter(recycler => {
-      return (
-        recycler.firstName?.toLowerCase().includes(term) ||
-        recycler.LastName?.toLowerCase().includes(term) ||
-        recycler.email?.toLowerCase().includes(term) ||
-        recycler.phone?.toLowerCase().includes(term) ||
-        recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(term)
-      );
-    });
-    
-    // Filter secondary recyclers
-    const filteredSecondary = recyclers.secondary.filter(recycler => {
-      return (
-        recycler.firstName?.toLowerCase().includes(term) ||
-        recycler.LastName?.toLowerCase().includes(term) ||
-        recycler.email?.toLowerCase().includes(term) ||
-        recycler.phone?.toLowerCase().includes(term) ||
-        recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(term)
-      );
-    });
-    
-    // Filter tertiary recyclers
-    const filteredTertiary = recyclers.tertiary.filter(recycler => {
-      return (
-        recycler.firstName?.toLowerCase().includes(term) ||
-        recycler.LastName?.toLowerCase().includes(term) ||
-        recycler.email?.toLowerCase().includes(term) ||
-        recycler.phone?.toLowerCase().includes(term) ||
-        recycler.wasteManagementInfo?.CompanyName?.toLowerCase().includes(term)
-      );
-    });
-
-    return {
-      clients: filteredClients,
-      primary: filteredPrimary,
-      secondary: filteredSecondary,
-      tertiary: filteredTertiary,
-    };
-  }, [searchTerm, clients, recyclers]);
-
-  // CRUD Operations
-  const handleDelete = async (collection: string, id: string) => {
-    if (!confirm("Are you sure you want to delete this item?")) return;
-    try {
-      await remove(ref(db, `${collection}/${id}`));
-      showToast("Item deleted successfully!", "success");
-    } catch (error) {
-      console.error("Error deleting item:", error);
-      showToast("Failed to delete item. Please try again.", "error");
-    }
-  };
-
-  const handleUpdate = async (collection: string, id: string, updatedData: Record<string, unknown>) => {
-    try {
-      await update(ref(db, `${collection}/${id}`), updatedData);
-      setPopupState(prev => ({ ...prev, isOpen: false }));
-      setSelectedItem(null);
-      showToast("Item updated successfully!", "success");
-    } catch (error) {
-      console.error("Error updating item:", error);
-      showToast("Failed to update item. Please try again.", "error");
-    }
-  };
-
-  const handleCreate = async (collection: string, id: string, data: Record<string, unknown>) => {
-    try {
-      await update(ref(db, `${collection}/${id}`), data);
-      setModalType(null);
-      setSelectedItem(null);
-      showToast("Item created successfully!", "success");
-    } catch (error) {
-      console.error("Error creating item:", error);
-      showToast("Failed to create item. Please try again.", "error");
-    }
-  };
-
-  const openPopupMenu = (item: Client | Recycler, title: string, type: "client" | "recycler") => {
-    setSelectedItem(item);
-    setPopupState({ isOpen: true, title, type });
-  };
-
-  const handleClosePopup = useCallback(() => {
-    setPopupState(prev => ({ ...prev, isOpen: false }));
-    setTimeout(() => setSelectedItem(null), 300);
-  }, []);
-
-  // Loading State
-  if (loading) {
+  }, [loading, user]);
+  
+  const menuItems = [
+    { title: 'User Management', icon: '👥', href: '/superadmin/users', description: 'Create and manage all platform users', color: '#667eea' },
+    { title: 'Recyclers', icon: '♻️', href: '/superadmin/recyclers', description: 'Manage recycler accounts and approvals', color: '#4CAF50' },
+    { title: 'Reports', icon: '📊', href: '/superadmin/reports', description: 'View system reports and analytics', color: '#FF9800' },
+    { title: 'Analytics', icon: '📈', href: '/superadmin/analytics', description: 'Platform performance metrics', color: '#2196F3' },
+    { title: 'Settings', icon: '⚙️', href: '/superadmin/settings', description: 'System configuration', color: '#9C27B0' },
+  ];
+  
+  if (loading || statsLoading) {
     return (
-      <div className={styles.loadingScreen}>
-        <div className={styles.loadingSpinner} />
-        <div className={styles.loadingText}>Loading dashboard...</div>
+      <div className={styles.loadingContainer}>
+        <div className={styles.spinner}></div>
+        <p>Loading dashboard...</p>
       </div>
     );
   }
-
-  // Main Dashboard View
-  if (viewMode === null) {
-    return (
-      <div className={styles.dashboard}>
-        <div className={styles.glassContainer}>
-          <h1 className={styles.title}>♻️ Waste Management Dashboard</h1>
-          
-          {/* Stats Overview */}
-          <div className={styles.statsGrid}>
-            <div className={styles.statCard}>
-              <div className={styles.statIcon}>📋</div>
-              <div className={styles.statInfo}>
-                <h3>Total Requests</h3>
-                <p>{stats.totalRequests}</p>
-                <small>+{stats.pendingRequests} pending</small>
-              </div>
-            </div>
-            <div className={styles.statCard}>
-              <div className={styles.statIcon}>♻️</div>
-              <div className={styles.statInfo}>
-                <h3>Recyclers</h3>
-                <p>{stats.totalRecyclers}</p>
-                <small>{recyclers.primary.length} Primary</small>
-              </div>
-            </div>
-            <div className={styles.statCard}>
-              <div className={styles.statIcon}>👥</div>
-              <div className={styles.statInfo}>
-                <h3>Clients</h3>
-                <p>{stats.totalClients}</p>
-                <small>Registered users</small>
-              </div>
-            </div>
-            <div className={styles.statCard}>
-              <div className={styles.statIcon}>💰</div>
-              <div className={styles.statInfo}>
-                <h3>Revenue</h3>
-                <p>₵{stats.totalRevenue.toLocaleString()}</p>
-                <small>From {stats.totalTransactions} txns</small>
-              </div>
-            </div>
-          </div>
-          
-          <div className={styles.categoryGrid}>
-            <div className={styles.categoryCard} onClick={() => setViewMode("clients")}>
-              <div className={styles.categoryIcon}>👥</div>
-              <h3>Clients</h3>
-              <p className={styles.categoryCount}>{filteredData.clients.length} registered</p>
-            </div>
-            <div className={styles.categoryCard} onClick={() => setViewMode("recyclers")}>
-              <div className={styles.categoryIcon}>♻️</div>
-              <h3>Primary Recyclers</h3>
-              <p className={styles.categoryCount}>{recyclers.primary.length} active</p>
-            </div>
-            <div className={styles.categoryCard} onClick={() => setViewMode("secondary")}>
-              <div className={styles.categoryIcon}>🏭</div>
-              <h3>Secondary Recyclers</h3>
-              <p className={styles.categoryCount}>{recyclers.secondary.length} active</p>
-            </div>
-            <div className={styles.categoryCard} onClick={() => setViewMode("tertiary")}>
-              <div className={styles.categoryIcon}>🔧</div>
-              <h3>Tertiary Recyclers</h3>
-              <p className={styles.categoryCount}>{recyclers.tertiary.length} active</p>
-            </div>
-          </div>
-
-          {/* Recent Activity Section */}
-          <div className={styles.recentActivity}>
-            <h2>Recent Activity</h2>
-            <div className={styles.activityList}>
-              {requests.slice(0, 5).map((req) => (
-                <div key={req.id} className={styles.activityItem}>
-                  <span className={styles.activityIcon}>
-                    {req.status === "ended" ? "✅" : req.status === "accepted" ? "🚚" : "⏳"}
-                  </span>
-                  <div className={styles.activityContent}>
-                    <p><strong>{req.client_name || "Unknown"}</strong> - {req.category || "General"}</p>
-                    <small>{req.status} • {req.weight_kg || req.weight || "?"} kg</small>
-                  </div>
-                  <span className={styles.activityTime}>
-                    {req.created_at ? new Date(req.created_at).toLocaleDateString() : "Recent"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+  
+  return (
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <div>
+          <h1>Welcome, {user?.name || 'Super Admin'}!</h1>
+          <p>Super Admin Dashboard - Manage GreenGo-Hub Platform</p>
         </div>
-        
-        {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-      </div>
-    );
-  }
-
-  // Entity View Renderer
-  const renderEntityView = (
-    title: string,
-    items: (Client | Recycler)[],
-    type: "client" | "recycler",
-    collection: string,
-    addButtonText: string
-  ) => (
-    <div className={styles.dashboard}>
-      <div className={styles.glassContainer}>
-        <div className={styles.viewHeader}>
-          <button className={styles.backButton} onClick={() => { setViewMode(null); setSearchTerm(""); }}>
-            ← Back to Dashboard
-          </button>
-          <h2>{title}</h2>
-          <button 
-            className={styles.addButton} 
-            onClick={() => { setSelectedItem(null); setModalType(`add${type === "client" ? "Client" : "Recycler"}`); }}
-          >
-            + {addButtonText}
-          </button>
+        <div className={styles.dateBadge}>
+          {new Date().toLocaleDateString(undefined, { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          })}
         </div>
-
-        <div className={styles.searchContainer}>
-          <div className={styles.searchWrapper}>
-            <span className={styles.searchIcon}>🔍</span>
-            <input
-              type="text"
-              placeholder={`Search ${title.toLowerCase()}...`}
-              className={styles.searchInput}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            {searchTerm && (
-              <button className={styles.searchClear} onClick={() => setSearchTerm("")}>
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className={styles.statsBar}>
-          <span>Total: {items.length} items</span>
-          {searchTerm && <span>Filtered: {items.length} results</span>}
-        </div>
-
-        <div className={styles.grid}>
-          {items.map((item) => (
-            <EntityCard
-              key={item.id}
-              entity={item}
-              type={type}
-              onView={() => openPopupMenu(item, `${title} Information`, type)}
-              onDelete={() => handleDelete(collection, item.id)}
-            />
-          ))}
-        </div>
-
-        {items.length === 0 && (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyStateIcon}>📭</div>
-            <h3>No {title.toLowerCase()} found</h3>
-            <p>Try adjusting your search or add a new {type}.</p>
-            <button 
-              className={styles.emptyStateAction}
-              onClick={() => { setSelectedItem(null); setModalType(`add${type === "client" ? "Client" : "Recycler"}`); }}
-            >
-              + Add {type === "client" ? "Client" : "Recycler"}
-            </button>
-          </div>
-        )}
-
-        {modalType && (
-          <Modal onClose={() => { setModalType(null); setSelectedItem(null); }}>
-            <UserForm
-              type={type}
-              initialData={modalType.startsWith("edit") && selectedItem ? selectedItem : undefined}
-              onSubmit={(data: Record<string, unknown>) => {
-                if (modalType.startsWith("edit") && selectedItem) {
-                  handleUpdate(collection, selectedItem.id, data);
-                } else {
-                  handleCreate(collection, Date.now().toString(), data);
-                }
-              }}
-              onCancel={() => { setModalType(null); setSelectedItem(null); }}
-            />
-          </Modal>
-        )}
-
-        <PopupMenu
-          isOpen={popupState.isOpen}
-          onClose={handleClosePopup}
-          title={popupState.title}
-          item={selectedItem}
-          itemType={popupState.type}
-          onSave={(updatedData: Record<string, unknown>) => {
-            if (selectedItem) {
-              handleUpdate(collection, selectedItem.id, updatedData);
-            }
-          }}
-        />
       </div>
       
-      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      <div className={styles.statsGrid}>
+        <div className={styles.statCard}>
+          <div className={styles.statIcon}>👥</div>
+          <div className={styles.statInfo}>
+            <div className={styles.statValue}>{stats.totalUsers.toLocaleString()}</div>
+            <div className={styles.statLabel}>Total Users</div>
+            <div className={styles.statSubLabel}>Clients + Recyclers + Admins</div>
+          </div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statIcon}>♻️</div>
+          <div className={styles.statInfo}>
+            <div className={styles.statValue}>{stats.activeRecyclers.toLocaleString()}</div>
+            <div className={styles.statLabel}>Active Recyclers</div>
+            <div className={styles.statSubLabel}>Verified waste collectors</div>
+          </div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statIcon}>📦</div>
+          <div className={styles.statInfo}>
+            <div className={styles.statValue}>{stats.totalWasteKg.toLocaleString()} kg</div>
+            <div className={styles.statLabel}>Waste Collected</div>
+            <div className={styles.statSubLabel}>Total from completed requests</div>
+          </div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statIcon}>💰</div>
+          <div className={styles.statInfo}>
+            <div className={styles.statValue}>₵{stats.totalRevenue.toLocaleString()}</div>
+            <div className={styles.statLabel}>Revenue</div>
+            <div className={styles.statSubLabel}>From completed collections</div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Additional Stats Row */}
+      <div className={styles.statsGrid}>
+        <div className={styles.statCard}>
+          <div className={styles.statIcon}>⏳</div>
+          <div className={styles.statInfo}>
+            <div className={styles.statValue}>{stats.pendingRequests.toLocaleString()}</div>
+            <div className={styles.statLabel}>Pending Requests</div>
+            <div className={styles.statSubLabel}>Awaiting processing</div>
+          </div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statIcon}>✅</div>
+          <div className={styles.statInfo}>
+            <div className={styles.statValue}>{stats.completedRequests.toLocaleString()}</div>
+            <div className={styles.statLabel}>Completed Requests</div>
+            <div className={styles.statSubLabel}>Successfully processed</div>
+          </div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statIcon}>📊</div>
+          <div className={styles.statInfo}>
+            <div className={styles.statValue}>
+              {stats.completedRequests > 0 
+                ? Math.round((stats.completedRequests / (stats.completedRequests + stats.pendingRequests)) * 100) 
+                : 0}%
+            </div>
+            <div className={styles.statLabel}>Completion Rate</div>
+            <div className={styles.statSubLabel}>Success rate</div>
+          </div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.statIcon}>💚</div>
+          <div className={styles.statInfo}>
+            <div className={styles.statValue}>
+              {stats.totalWasteKg > 0 
+                ? Math.round(stats.totalWasteKg * 0.5) 
+                : 0} kg
+            </div>
+            <div className={styles.statLabel}>CO₂ Reduction</div>
+            <div className={styles.statSubLabel}>Estimated carbon offset</div>
+          </div>
+        </div>
+      </div>
+      
+      <div className={styles.menuGrid}>
+        {menuItems.map((item) => (
+          <Link key={item.href} href={item.href} className={styles.menuCard}>
+            <div className={styles.menuIcon} style={{ backgroundColor: item.color }}>
+              {item.icon}
+            </div>
+            <div className={styles.menuContent}>
+              <h3>{item.title}</h3>
+              <p>{item.description}</p>
+            </div>
+            <div className={styles.menuArrow}>→</div>
+          </Link>
+        ))}
+      </div>
+      
+      {/* Quick Insight Section */}
+      <div className={styles.insightSection}>
+        <h2>Quick Insights</h2>
+        <div className={styles.insightGrid}>
+          <div className={styles.insightCard}>
+            <h4>📈 Top Category</h4>
+            <p>Plastic waste is the most collected category</p>
+          </div>
+          <div className={styles.insightCard}>
+            <h4>🏆 Best District</h4>
+            <p>Ablekuma North Municipal District</p>
+          </div>
+          <div className={styles.insightCard}>
+            <h4>🔄 Recycling Rate</h4>
+            <p>~{stats.completedRequests > 0 ? Math.round((stats.completedRequests / (stats.completedRequests + stats.pendingRequests)) * 100) : 0}% successful collections</p>
+          </div>
+          <div className={styles.insightCard}>
+            <h4>🌱 Environmental Impact</h4>
+            <p>{stats.totalWasteKg > 0 ? Math.round(stats.totalWasteKg * 0.5) : 0} kg CO₂ saved</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
-
-  // Route to appropriate view
-  const views = {
-    clients: () => renderEntityView("Clients Management", filteredData.clients, "client", "Clients", "Add Client"),
-    recyclers: () => renderEntityView("Primary Recyclers Management", filteredData.primary, "recycler", "Recyclers", "Add Recycler"),
-    secondary: () => renderEntityView("Secondary Recyclers Management", filteredData.secondary, "recycler", "Recyclers", "Add Secondary Recycler"),
-    tertiary: () => renderEntityView("Tertiary Recyclers Management", filteredData.tertiary, "recycler", "Recyclers", "Add Tertiary Recycler"),
-  };
-
-  return views[viewMode as keyof typeof views]?.() || null;
 }
