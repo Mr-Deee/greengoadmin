@@ -26,119 +26,81 @@ export default function Login() {
       let role = null;
       let redirectPath = '/dashboard';
       
-      // First check in Admin node
+      // 1. Check in Admin node (super_admin and admin roles)
       const adminSnapshot = await get(ref(db, `Admin/${uid}`));
       const adminData = adminSnapshot.val();
       if (adminData && adminData.role) {
         role = adminData.role;
-        redirectPath = role === 'super_admin' ? '/superadmin' : '/admin';
+        if (role === 'super_admin') {
+          redirectPath = '/superadmin';
+        } else {
+          redirectPath = '/admin';
+        }
       }
       
-      // If not found in Admin, check in Recyclers node
+      // 2. If not found in Admin, check in Recyclers node
       if (!role) {
         const recyclerSnapshot = await get(ref(db, `Recyclers/${uid}`));
         const recyclerData = recyclerSnapshot.val();
+        
         if (recyclerData) {
-          // Check WMSTYPE to determine role
-          const wmsType = recyclerData.WMSTYPE || recyclerData.wmsType;
-          const wmsCategory = recyclerData.WMSCATEGORY || recyclerData.wmsCategory;
-          const recycleType = recyclerData.wasteManagementInfo?.RecycleType;
+          console.log('Recycler data found:', recyclerData);
           
-          console.log('Recycler data found:', { wmsType, wmsCategory, recycleType });
-          
-          // Determine role based on WMSTYPE
-          if (wmsType === 'Recycle') {
+          // Check if user has role field
+          if (recyclerData.role) {
+            role = recyclerData.role;
+            if (role === 'recycler') {
+              redirectPath = '/recycler';
+            } else if (role === 'aggregator') {
+              redirectPath = '/aggregator';
+            }
+          }
+          // Check WMSTYPE field
+          else if (recyclerData.WMSTYPE === 'Recycle') {
             role = 'recycler';
             redirectPath = '/recycler';
-          } else if (recycleType === 'Primary' || wmsCategory === 'Primary') {
-            role = 'recycler';
-            redirectPath = '/recycler';
-          } else if (recycleType === 'Secondary' || wmsCategory === 'Secondary') {
+          }
+          // Check RecycleType in wasteManagementInfo
+          else if (recyclerData.wasteManagementInfo?.RecycleType === 'Secondary') {
             role = 'aggregator';
             redirectPath = '/aggregator';
-          } else if (recyclerData.role) {
-            role = recyclerData.role;
-            // Set redirect based on role
-            if (role === 'aggregator') redirectPath = '/aggregator';
-            else if (role === 'recycler') redirectPath = '/recycler';
+          }
+          else if (recyclerData.wasteManagementInfo?.RecycleType === 'Primary') {
+            role = 'recycler';
+            redirectPath = '/recycler';
+          }
+          // Check WMSCATEGORY
+          else if (recyclerData.WMSCATEGORY === 'Secondary') {
+            role = 'aggregator';
+            redirectPath = '/aggregator';
+          }
+          else if (recyclerData.WMSCATEGORY === 'Primary') {
+            role = 'recycler';
+            redirectPath = '/recycler';
+          }
+          // If just a general recycler
+          else if (recyclerData.firstName) {
+            role = 'recycler';
+            redirectPath = '/recycler';
           }
         }
       }
       
-      // If not found in Recyclers, check in Users node
+      // 3. Check in Clients node
       if (!role) {
-        const userSnapshot = await get(ref(db, `users/${uid}`));
-        const userData = userSnapshot.val();
-        if (userData && userData.role) {
-          role = userData.role;
-          // Set redirect based on role
-          switch(role) {
-            case 'aggregator':
-              redirectPath = '/aggregator';
+        const clientsSnapshot = await get(ref(db, 'Clients'));
+        const allClients = clientsSnapshot.val();
+        
+        if (allClients) {
+          let foundClientUid = null;
+          for (const [clientUid, clientData] of Object.entries(allClients)) {
+            if ((clientData as any).email === email) {
+              foundClientUid = clientUid;
+              role = 'client';
+              redirectPath = '/client-dashboard';
               break;
-            case 'field_operator':
-              redirectPath = '/field-operator';
-              break;
-            case 'business':
-              redirectPath = '/business';
-              break;
-            case 'government':
-              redirectPath = '/government';
-              break;
-            case 'ngo':
-              redirectPath = '/ngo';
-              break;
-            case 'sustainability_team':
-              redirectPath = '/sustainability';
-              break;
-            case 'regulator':
-              redirectPath = '/regulator';
-              break;
-            case 'civil_society':
-              redirectPath = '/civil-society';
-              break;
-            case 'policy_maker':
-              redirectPath = '/policy-maker';
-              break;
-            case 'investor':
-              redirectPath = '/investor';
-              break;
-            case 'platform_leadership':
-              redirectPath = '/platform-leadership';
-              break;
-            default:
-              redirectPath = '/dashboard';
+            }
           }
-        }
-      }
-      
-      // If not found, check in Aggregators node
-      if (!role) {
-        const aggregatorSnapshot = await get(ref(db, `Aggregators/${uid}`));
-        const aggregatorData = aggregatorSnapshot.val();
-        if (aggregatorData && aggregatorData.role) {
-          role = aggregatorData.role;
-          redirectPath = '/aggregator';
-        }
-      }
-      
-      // If not found, check in FieldOperators node
-      if (!role) {
-        const operatorSnapshot = await get(ref(db, `FieldOperators/${uid}`));
-        const operatorData = operatorSnapshot.val();
-        if (operatorData && operatorData.role) {
-          role = operatorData.role;
-          redirectPath = '/field-operator';
-        }
-      }
-      
-      // If still no role, check if it's a client
-      if (!role) {
-        const clientSnapshot = await get(ref(db, `Clients/${uid}`));
-        const clientData = clientSnapshot.val();
-        if (clientData) {
-          role = 'client';
-          redirectPath = '/client-dashboard';
         }
       }
       
@@ -156,7 +118,19 @@ export default function Login() {
       
     } catch (error: any) {
       console.error("Login failed:", error);
-      setError(error.message || "Login failed. Please check your credentials.");
+      
+      // Handle specific Firebase auth errors
+      if (error.code === 'auth/user-not-found') {
+        setError('No account found with this email.');
+      } else if (error.code === 'auth/wrong-password') {
+        setError('Incorrect password. Please try again.');
+      } else if (error.code === 'auth/invalid-email') {
+        setError('Invalid email format.');
+      } else if (error.code === 'auth/too-many-requests') {
+        setError('Too many failed attempts. Please try again later.');
+      } else {
+        setError(error.message || "Login failed. Please check your credentials.");
+      }
     } finally {
       setLoading(false);
     }
@@ -186,6 +160,7 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               className={styles.input}
               disabled={loading}
+              value={email}
             />
             <input
               type="password"
@@ -194,6 +169,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               className={styles.input}
               disabled={loading}
+              value={password}
             />
 
             <div className={styles.options}>

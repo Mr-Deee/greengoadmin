@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { ref, onValue, update, push, set, get } from 'firebase/database';
+import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import styles from './recycler.module.css';
 
@@ -87,6 +88,7 @@ export default function RecyclerPage() {
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [stats, setStats] = useState({
     totalReceived: 0,
     totalProcessed: 0,
@@ -101,48 +103,60 @@ export default function RecyclerPage() {
 
   const checkAuth = async () => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      console.log('Auth state changed:', user?.uid);
+      
       if (!user) {
-        router.push('/login');
+        console.log('No user found, redirecting to login');
+        window.location.href = window.location.origin + '/login';
         return;
       }
 
       try {
         setRecyclerId(user.uid);
         
+        // First check in Recyclers node
         const recyclerRef = ref(db, `Recyclers/${user.uid}`);
         const snapshot = await get(recyclerRef);
         const userData = snapshot.val();
         
-        if (!userData) {
-          const adminRef = ref(db, `Admin/${user.uid}`);
-          const adminSnapshot = await get(adminRef);
-          const adminData = adminSnapshot.val();
+        if (userData) {
+          console.log('Recycler data found:', userData);
+          setUserName(userData.firstName || userData.name || user.email?.split('@')[0] || 'Recycler');
+          setUserRole(userData.role || 'recycler');
+          setLoading(false);
           
-          if (adminData && adminData.role === 'super_admin') {
-            setUserName(adminData.name || user.email?.split('@')[0] || 'Super Admin');
-            setUserRole('super_admin');
-            setLoading(false);
-            fetchAllWasteRequests();
-            fetchInventory();
-            fetchProcessingBatches();
-            fetchSales();
-            return;
-          } else {
-            router.push('/unauthorized');
-            return;
-          }
+          // Fetch data for this recycler
+          fetchWasteRequestsForRecycler(user.uid);
+          fetchInventoryForRecycler(user.uid);
+          fetchProcessingBatchesForRecycler(user.uid);
+          fetchSalesForRecycler(user.uid);
+          return;
         }
         
-        setUserName(userData.firstName || userData.name || user.email?.split('@')[0] || 'Recycler');
-        setUserRole(userData.role || 'recycler');
-        setLoading(false);
+        // If not in Recyclers, check in Admin node
+        const adminRef = ref(db, `Admin/${user.uid}`);
+        const adminSnapshot = await get(adminRef);
+        const adminData = adminSnapshot.val();
         
-        fetchWasteRequestsForRecycler(user.uid);
-        fetchInventoryForRecycler(user.uid);
-        fetchProcessingBatchesForRecycler(user.uid);
-        fetchSalesForRecycler(user.uid);
+        if (adminData && adminData.role === 'super_admin') {
+          console.log('Super admin found:', adminData);
+          setUserName(adminData.email?.split('@')[0] || 'Super Admin');
+          setUserRole('super_admin');
+          setLoading(false);
+          fetchAllWasteRequests();
+          // For super admin, inventory/processing/sales might be from a different path
+          // Or just show empty states
+          return;
+        }
+        
+        // If not found anywhere
+        console.log('No user data found in Recyclers or Admin');
+        setLoading(false);
+        router.push('/unauthorized');
+        
       } catch (error) {
         console.error('Error checking user:', error);
+        setLoading(false);
         router.push('/login');
       }
     });
@@ -150,23 +164,37 @@ export default function RecyclerPage() {
     return () => unsubscribe();
   };
 
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.push('/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  };
+
   const fetchWasteRequestsForRecycler = (recyclerId: string) => {
+    console.log('Fetching waste requests for recycler:', recyclerId);
     const requestsRef = ref(db, 'ClientRequest');
     
     const unsubscribe = onValue(requestsRef, (snapshot) => {
       const data = snapshot.val();
+      console.log('ClientRequest data received:', data ? Object.keys(data).length : 0, 'records');
+      
       if (data) {
         const requestsArray = Object.keys(data).map(key => ({
           id: key,
           ...data[key]
         })) as WasteRequest[];
         
+        // Filter requests assigned to this recycler and not ended/completed
         const filteredRequests = requestsArray.filter(req => {
           const isAssignedToMe = req.WMS_id === recyclerId;
           const isActive = req.status !== 'ended' && req.status !== 'completed';
           return isAssignedToMe && isActive;
         });
         
+        console.log('Filtered requests:', filteredRequests.length);
         setWasteRequests(filteredRequests);
         
         setStats(prev => ({
@@ -184,17 +212,19 @@ export default function RecyclerPage() {
       } else {
         setWasteRequests([]);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
   };
 
   const fetchAllWasteRequests = () => {
+    console.log('Fetching all waste requests for super admin');
     const requestsRef = ref(db, 'ClientRequest');
     
     const unsubscribe = onValue(requestsRef, (snapshot) => {
       const data = snapshot.val();
+      console.log('All ClientRequest data:', data ? Object.keys(data).length : 0, 'records');
+      
       if (data) {
         const requestsArray = Object.keys(data).map(key => ({
           id: key,
@@ -217,17 +247,19 @@ export default function RecyclerPage() {
         setWasteRequests([]);
         setStats(prev => ({ ...prev, pendingRequests: 0 }));
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
   };
 
   const fetchInventoryForRecycler = (recyclerId: string) => {
+    console.log('Fetching inventory for recycler:', recyclerId);
     const inventoryRef = ref(db, `Recyclers/${recyclerId}/inventory`);
     
     const unsubscribe = onValue(inventoryRef, (snapshot) => {
       const data = snapshot.val();
+      console.log('Inventory data:', data ? Object.keys(data).length : 0, 'items');
+      
       if (data) {
         const inventoryArray = Object.keys(data).map(key => ({
           id: key,
@@ -240,6 +272,7 @@ export default function RecyclerPage() {
         setStats(prev => ({ ...prev, inventoryValue: totalValue }));
       } else {
         setInventory([]);
+        setStats(prev => ({ ...prev, inventoryValue: 0 }));
       }
     });
 
@@ -247,10 +280,13 @@ export default function RecyclerPage() {
   };
 
   const fetchProcessingBatchesForRecycler = (recyclerId: string) => {
+    console.log('Fetching processing batches for recycler:', recyclerId);
     const batchesRef = ref(db, `Recyclers/${recyclerId}/processingBatches`);
     
     const unsubscribe = onValue(batchesRef, (snapshot) => {
       const data = snapshot.val();
+      console.log('Processing batches:', data ? Object.keys(data).length : 0, 'batches');
+      
       if (data) {
         const batchesArray = Object.keys(data).map(key => ({
           id: key,
@@ -265,6 +301,7 @@ export default function RecyclerPage() {
         setStats(prev => ({ ...prev, totalProcessed: processed }));
       } else {
         setProcessingBatches([]);
+        setStats(prev => ({ ...prev, totalProcessed: 0 }));
       }
     });
 
@@ -272,10 +309,13 @@ export default function RecyclerPage() {
   };
 
   const fetchSalesForRecycler = (recyclerId: string) => {
+    console.log('Fetching sales for recycler:', recyclerId);
     const salesRef = ref(db, `Recyclers/${recyclerId}/sales`);
     
     const unsubscribe = onValue(salesRef, (snapshot) => {
       const data = snapshot.val();
+      console.log('Sales data:', data ? Object.keys(data).length : 0, 'sales');
+      
       if (data) {
         const salesArray = Object.keys(data).map(key => ({
           id: key,
@@ -288,29 +328,18 @@ export default function RecyclerPage() {
         setStats(prev => ({ ...prev, totalSales: totalSales }));
       } else {
         setSales([]);
+        setStats(prev => ({ ...prev, totalSales: 0 }));
       }
     });
 
     return () => unsubscribe();
   };
 
-  const fetchInventory = () => {
-    const currentId = auth.currentUser?.uid;
-    if (currentId) fetchInventoryForRecycler(currentId);
-  };
-
-  const fetchProcessingBatches = () => {
-    const currentId = auth.currentUser?.uid;
-    if (currentId) fetchProcessingBatchesForRecycler(currentId);
-  };
-
-  const fetchSales = () => {
-    const currentId = auth.currentUser?.uid;
-    if (currentId) fetchSalesForRecycler(currentId);
-  };
-
   const receiveWaste = async (request: WasteRequest, actualWeight: number, grade: string) => {
     try {
+      const currentRecyclerId = auth.currentUser?.uid;
+      if (!currentRecyclerId) throw new Error('No recycler ID');
+      
       const requestRef = ref(db, `ClientRequest/${request.id}`);
       const calculatedPrice = actualWeight * (request.price_per_kg || 2);
       
@@ -320,11 +349,8 @@ export default function RecyclerPage() {
         calculated_price: calculatedPrice,
         waste_grade: grade,
         receivedAt: new Date().toISOString(),
-        receivedBy: auth.currentUser?.uid
+        receivedBy: currentRecyclerId
       });
-      
-      const currentRecyclerId = auth.currentUser?.uid;
-      if (!currentRecyclerId) throw new Error('No recycler ID');
       
       const inventoryRef = ref(db, `Recyclers/${currentRecyclerId}/inventory`);
       const newInventoryRef = push(inventoryRef);
@@ -351,6 +377,7 @@ export default function RecyclerPage() {
       setShowReceiveModal(false);
       setSelectedRequest(null);
       
+      // Refresh data
       fetchInventoryForRecycler(currentRecyclerId);
       fetchWasteRequestsForRecycler(currentRecyclerId);
     } catch (error) {
@@ -384,7 +411,7 @@ export default function RecyclerPage() {
         startDate: new Date().toISOString(),
         endDate: new Date().toISOString(),
         notes: batch.notes,
-        processedBy: auth.currentUser?.uid,
+        processedBy: currentRecyclerId,
         recyclerId: currentRecyclerId
       });
       
@@ -427,10 +454,11 @@ export default function RecyclerPage() {
         ...sale,
         saleDate: new Date().toISOString(),
         status: 'completed',
-        recordedBy: auth.currentUser?.uid,
+        recordedBy: currentRecyclerId,
         recyclerId: currentRecyclerId
       });
       
+      // Update inventory - subtract sold quantity
       const inventoryItems = inventory.filter(item => 
         item.category === sale.category && 
         item.grade === sale.grade && 
@@ -483,7 +511,7 @@ export default function RecyclerPage() {
 
   return (
     <div className={styles.container}>
-      {/* Header */}
+      {/* Header with Logout Button */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <div className={styles.logoSection}>
@@ -507,8 +535,49 @@ export default function RecyclerPage() {
               day: 'numeric' 
             })}</span>
           </div>
+          <button 
+            className={styles.logoutBtn}
+            onClick={() => setShowLogoutConfirm(true)}
+            title="Logout"
+          >
+            <span className={styles.logoutIcon}>🚪</span>
+            <span className={styles.logoutText}>Logout</span>
+          </button>
         </div>
       </div>
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className={styles.modal} onClick={() => setShowLogoutConfirm(false)}>
+          <div className={`${styles.modalContent} ${styles.confirmModal}`} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>Confirm Logout</h2>
+              <button className={styles.closeBtn} onClick={() => setShowLogoutConfirm(false)}>✕</button>
+            </div>
+            <div className={styles.confirmBody}>
+              <div className={styles.confirmIcon}>👋</div>
+              <p className={styles.confirmText}>Are you sure you want to logout?</p>
+              <p className={styles.confirmSubtext}>You'll need to login again to access your dashboard.</p>
+            </div>
+            <div className={styles.formActions}>
+              <button 
+                type="button" 
+                className={styles.cancelBtn} 
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className={styles.logoutConfirmBtn} 
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className={styles.statsGrid}>
