@@ -128,7 +128,7 @@ export default function SuperAdminPage() {
   
   const menuItems = [
     { title: 'User Management', icon: '👥', href: '/superadmin/users', description: 'Create and manage all platform users', color: '#667eea' },
-    { title: 'Recyclers', icon: '♻️', href: '/superadmin/recyclers', description: 'Manage recycler accounts and approvals', color: '#4CAF50' },
+    { title: 'Recyclers', icon: '♻️', href: '/recycler', description: 'Manage recycler accounts and approvals', color: '#4CAF50' },
     { title: 'Reports', icon: '📊', href: '/superadmin/reports', description: 'View system reports and analytics', color: '#FF9800' },
     { title: 'Analytics', icon: '📈', href: '/superadmin/analytics', description: 'Platform performance metrics', color: '#2196F3' },
     { title: 'Settings', icon: '⚙️', href: '/superadmin/settings', description: 'System configuration', color: '#9C27B0' },

@@ -2,804 +2,1139 @@
 
 import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { ref, onValue, update, push, set, get } from 'firebase/database';
+import { ref, onValue, update, remove, set, push, get } from 'firebase/database';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import styles from './users.module.css';
 
-// Database interfaces based on your actual structure
-interface ClientRequest {
-  id: string;
-  Client_id?: string;
-  client_name?: string;
-  client_phone?: string;
-  category?: string;
-  waste_category?: string;
-  waste_grade?: string;
-  status?: 'searching' | 'accepted' | 'onride' | 'ended';
-  weight?: string;
-  weight_kg?: number;
-  calculated_price?: number;
-  price_per_kg?: number;
-  created_at?: string;
-  location?: string;
-  Client_address?: string;
-  WMS_id?: string;
-  WMS_name?: string;
-  WMS_phone?: string;
-  payment_method?: string;
-  imageUrl?: string;
-  pickup?: { latitude: string; longitude: string };
-  dropoff?: { latitude: string; longitude: string };
-}
+// User role definitions - Aggregator includes Recycling Hub functionality
+const USER_ROLES = {
+  super_admin: {
+    name: 'Super Admin',
+    icon: '👑',
+    description: 'Full system control and user management',
+    node: 'Admin',
+    category: 'Administration',
+    color: '#F44336'
+  },
+  aggregator: {
+    name: 'Aggregator',
+    icon: '🏢',
+    description: 'Manages waste collection, aggregation, and recycling operations',
+    node: 'Aggregators',
+    category: 'Waste Management',
+    color: '#2196F3'
+  },
+  field_operator: {
+    name: 'Field Operator',
+    icon: '👷',
+    description: 'Collects waste from generators',
+    node: 'FieldOperators',
+    category: 'Waste Management',
+    color: '#4CAF50'
+  },
+  business: {
+    name: 'Business',
+    icon: '🏭',
+    description: 'Purchases recyclable materials',
+    node: 'Businesses',
+    category: 'Business & Investment',
+    color: '#795548'
+  },
+  investor: {
+    name: 'Investor',
+    icon: '💰',
+    description: 'Market analysis and investment opportunities',
+    node: 'Investors',
+    category: 'Business & Investment',
+    color: '#FFC107'
+  },
+  government: {
+    name: 'Government',
+    icon: '🏛️',
+    description: 'Monitors compliance and performance',
+    node: 'Government',
+    category: 'Government & Regulatory',
+    color: '#607D8B'
+  },
+  regulator: {
+    name: 'Regulator',
+    icon: '⚖️',
+    description: 'Licensing and compliance enforcement',
+    node: 'Regulators',
+    category: 'Government & Regulatory',
+    color: '#3F51B5'
+  },
+  policy_maker: {
+    name: 'Policy Maker',
+    icon: '📜',
+    description: 'Strategic planning and policy development',
+    node: 'PolicyMakers',
+    category: 'Government & Regulatory',
+    color: '#673AB7'
+  },
+  ngo: {
+    name: 'NGO',
+    icon: '🤝',
+    description: 'Community outreach and impact tracking',
+    node: 'NGOs',
+    category: 'Civil Society & Sustainability',
+    color: '#8BC34A'
+  },
+  sustainability_team: {
+    name: 'Sustainability Team',
+    icon: '🌱',
+    description: 'Environmental impact monitoring',
+    node: 'Sustainability',
+    category: 'Civil Society & Sustainability',
+    color: '#009688'
+  },
+  civil_society: {
+    name: 'Civil Society',
+    icon: '👥',
+    description: 'Advocacy and transparency',
+    node: 'CivilSociety',
+    category: 'Civil Society & Sustainability',
+    color: '#E91E63'
+  },
+  platform_manager: {
+    name: 'Platform Manager',
+    icon: '📱',
+    description: 'Manages platform operations',
+    node: 'PlatformManagers',
+    category: 'Platform Management',
+    color: '#00BCD4'
+  },
+  platform_leadership: {
+    name: 'Platform Leadership',
+    icon: '👑',
+    description: 'Platform strategy and growth',
+    node: 'PlatformLeadership',
+    category: 'Platform Management',
+    color: '#FF9800'
+  },
+  client: {
+    name: 'Client (Waste Generator)',
+    icon: '🏠',
+    description: 'Households, institutions, and organizations that generate waste',
+    node: 'Clients',
+    category: 'Waste Generators',
+    color: '#4CAF50'
+  }
+};
 
-interface RecyclerData {
+interface User {
   id: string;
+  uid: string;
+  email: string;
+  name: string;
   firstName?: string;
   LastName?: string;
-  email?: string;
+  role: string;
+  organization?: string;
   phone?: string;
+  phoneNumber?: string;
+  district?: string;
+  region?: string;
+  location?: string;
+  settlementType?: string;
+  gpsAddress?: string;
+  ghCardNo?: string;
+  status: 'active' | 'pending' | 'suspended';
+  createdAt: string;
+  createdBy?: string;
   WMSTYPE?: string;
   WMSCATEGORY?: string;
-  wmsCategory?: string;
   detailsComp?: boolean;
-  riderImageUrl?: string;
-  token?: string;
   wasteManagementInfo?: {
     CompanyName?: string;
     location?: string;
     RecycleType?: string;
-    WasteCategory?: string[] | string;
-    WasteClassification?: string[] | string;
-    employees?: number | string;
     district?: string;
-    gps?: string;
-    ghMobileNumber?: string;
-    ghanaCardNumber?: string;
+    employees?: string;
   };
 }
 
-interface ProcessingRecord {
-  id: string;
-  requestId: string;
-  clientName: string;
-  wasteCategory: string;
-  grade: string;
-  inputWeight: number;
-  outputWeight: number;
-  processedAt: string;
-  processedBy: string;
-  batchNumber: string;
-  notes?: string;
-}
-
-interface SaleRecord {
-  id: string;
-  buyerName: string;
-  buyerContact: string;
-  wasteCategory: string;
-  grade: string;
-  quantity: number;
-  pricePerKg: number;
-  totalAmount: number;
-  saleDate: string;
-  status: 'pending' | 'completed' | 'delivered';
-  notes?: string;
-}
-
-type TabType = 'assigned' | 'processing' | 'sales';
-
-export default function RecyclerPage() {
+export default function UserManagementPage() {
   const router = useRouter();
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [recyclerData, setRecyclerData] = useState<RecyclerData | null>(null);
-  const [assignedRequests, setAssignedRequests] = useState<ClientRequest[]>([]);
-  const [processingHistory, setProcessingHistory] = useState<ProcessingRecord[]>([]);
-  const [salesHistory, setSalesHistory] = useState<SaleRecord[]>([]);
-  const [stats, setStats] = useState({
-    totalReceived: 0,
-    totalProcessed: 0,
-    totalRevenue: 0,
-    pendingCollections: 0,
-    completedToday: 0,
-    totalWeightProcessed: 0
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [toast, setToast] = useState<{ message: string; type: string } | null>(null);
+  const [showRoleCards, setShowRoleCards] = useState(true);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    firstName: '',
+    lastName: '',
+    role: '',
+    organization: '',
+    phone: '',
+    district: '',
+    region: '',
+    location: '',
+    settlementType: '',
+    gpsAddress: '',
+    ghCardNo: '',
+    department: '',
+    position: '',
+    agency: '',
+    status: 'pending'
   });
-  const [activeTab, setActiveTab] = useState<TabType>('assigned');
-  const [selectedRequest, setSelectedRequest] = useState<ClientRequest | null>(null);
-  const [showReceiveModal, setShowReceiveModal] = useState(false);
-  const [showSaleModal, setShowSaleModal] = useState(false);
-  const [filterDate, setFilterDate] = useState('');
 
   useEffect(() => {
-    checkAuthAndLoadData();
+    fetchAllUsers();
   }, []);
 
-  const checkAuthAndLoadData = async () => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        router.push('/login');
-        return;
-      }
+  const fetchAllUsers = () => {
+    const allUsers: User[] = [];
+    let completedFetches = 0;
+    // Combine Aggregators and Recyclers into one role
+    const nodes = ['Admin', 'Clients', 'Aggregators', 'Recyclers', 'FieldOperators', 'Businesses', 'Investors', 'Government', 'Regulators', 'PolicyMakers', 'NGOs', 'Sustainability', 'CivilSociety', 'PlatformManagers', 'PlatformLeadership'];
+    const totalNodes = nodes.length;
 
-      try {
-        // Get recycler data
-        const recyclerRef = ref(db, `Recyclers/${user.uid}`);
-        const recyclerSnapshot = await get(recyclerRef);
-        const recyclerInfo = recyclerSnapshot.val();
-        
-        if (!recyclerInfo) {
-          console.error('Recycler not found');
-          router.push('/unauthorized');
-          return;
+    nodes.forEach(node => {
+      const nodeRef = ref(db, node);
+      onValue(nodeRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const usersFromNode = Object.keys(data).map(key => ({
+            id: key,
+            uid: key,
+            ...data[key]
+          })) as User[];
+          
+          usersFromNode.forEach(user => {
+            let role = user.role || '';
+            if (!role) {
+              if (node === 'Admin') role = 'super_admin';
+              else if (node === 'Clients') role = 'client';
+              else if (node === 'Aggregators') role = 'aggregator';
+              else if (node === 'Recyclers') role = 'aggregator'; // Recyclers become Aggregators
+              else if (node === 'FieldOperators') role = 'field_operator';
+              else if (node === 'Businesses') role = 'business';
+              else if (node === 'Investors') role = 'investor';
+              else if (node === 'Government') role = 'government';
+              else if (node === 'Regulators') role = 'regulator';
+              else if (node === 'PolicyMakers') role = 'policy_maker';
+              else if (node === 'NGOs') role = 'ngo';
+              else if (node === 'Sustainability') role = 'sustainability_team';
+              else if (node === 'CivilSociety') role = 'civil_society';
+              else if (node === 'PlatformManagers') role = 'platform_manager';
+              else if (node === 'PlatformLeadership') role = 'platform_leadership';
+            }
+            
+            const existingIndex = allUsers.findIndex(u => u.uid === user.uid);
+            if (existingIndex === -1) {
+              let status: 'active' | 'pending' | 'suspended' = 'active';
+              if (user.status === 'suspended') status = 'suspended';
+              else if (user.status === 'pending') status = 'pending';
+              else if (user.detailsComp === false) status = 'pending';
+              
+              allUsers.push({ ...user, role, status });
+            }
+          });
         }
-        
-        setRecyclerData({ id: user.uid, ...recyclerInfo });
-        
-        // Load all data
-        loadAssignedRequests(user.uid);
-        loadProcessingHistory(user.uid);
-        loadSalesHistory(user.uid);
-        
-        setLoading(false);
-      } catch (error) {
-        console.error('Error loading recycler data:', error);
-        router.push('/login');
-      }
-    });
-
-    return () => unsubscribe();
-  };
-
-  const loadAssignedRequests = (recyclerId: string) => {
-    const requestsRef = ref(db, 'ClientRequest');
-    
-    const unsubscribe = onValue(requestsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const requestsArray = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key]
-        })) as ClientRequest[];
-        
-        // Filter requests assigned to this recycler and not completed
-        const assigned = requestsArray.filter(req => 
-          req.WMS_id === recyclerId && 
-          req.status !== 'ended'
-        );
-        
-        setAssignedRequests(assigned);
-        
-        // Calculate stats
-        const today = new Date().toISOString().split('T')[0];
-        const completedToday = requestsArray.filter(req => 
-          req.WMS_id === recyclerId && 
-          req.status === 'ended' &&
-          req.created_at?.startsWith(today)
-        ).length;
-        
-        const totalWeight = assigned.reduce((sum, req) => sum + (req.weight_kg || 0), 0);
-        
-        setStats(prev => ({
-          ...prev,
-          pendingCollections: assigned.length,
-          completedToday,
-          totalWeightProcessed: totalWeight
-        }));
-      }
-    });
-
-    return () => unsubscribe();
-  };
-
-  const loadProcessingHistory = (recyclerId: string) => {
-    const historyRef = ref(db, `Recyclers/${recyclerId}/processingHistory`);
-    
-    const unsubscribe = onValue(historyRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const historyArray = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key]
-        })) as ProcessingRecord[];
-        
-        setProcessingHistory(historyArray);
-        
-        const totalProcessed = historyArray.reduce((sum, record) => sum + (record.outputWeight || 0), 0);
-        setStats(prev => ({ ...prev, totalProcessed }));
-      }
-    });
-
-    return () => unsubscribe();
-  };
-
-  const loadSalesHistory = (recyclerId: string) => {
-    const salesRef = ref(db, `Recyclers/${recyclerId}/sales`);
-    
-    const unsubscribe = onValue(salesRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const salesArray = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key]
-        })) as SaleRecord[];
-        
-        setSalesHistory(salesArray);
-        
-        const totalRevenue = salesArray.reduce((sum, sale) => sum + (sale.totalAmount || 0), 0);
-        setStats(prev => ({ ...prev, totalRevenue }));
-      }
-    });
-
-    return () => unsubscribe();
-  };
-
-  const receiveAndProcessWaste = async (request: ClientRequest, inputWeight: number, outputWeight: number, grade: string, notes: string) => {
-    try {
-      const recyclerId = auth.currentUser?.uid;
-      if (!recyclerId) throw new Error('No recycler ID');
-
-      // Update the request status
-      const requestRef = ref(db, `ClientRequest/${request.id}`);
-      await update(requestRef, {
-        status: 'ended',
-        weight_kg: inputWeight,
-        calculated_price: inputWeight * (request.price_per_kg || 2),
-        waste_grade: grade,
-        receivedAt: new Date().toISOString(),
-        processedBy: recyclerId,
-        outputWeight: outputWeight
+        completedFetches++;
+        if (completedFetches === totalNodes) {
+          setUsers(allUsers);
+          setLoading(false);
+        }
+      }, (error) => {
+        console.error(`Error fetching from ${node}:`, error);
+        completedFetches++;
+        if (completedFetches === totalNodes) {
+          setLoading(false);
+        }
       });
+    });
+  };
 
-      // Create processing record
-      const batchNumber = `BATCH-${Date.now()}-${recyclerId.slice(-4)}`;
-      const historyRef = ref(db, `Recyclers/${recyclerId}/processingHistory`);
-      const newHistoryRef = push(historyRef);
-      
-      await set(newHistoryRef, {
-        requestId: request.id,
-        clientName: request.client_name,
-        wasteCategory: request.waste_category || request.category || 'General',
-        grade: grade,
-        inputWeight: inputWeight,
-        outputWeight: outputWeight,
-        processedAt: new Date().toISOString(),
-        processedBy: recyclerId,
-        batchNumber: batchNumber,
-        notes: notes,
-        originalWeight: request.weight_kg || request.weight,
-        pricePerKg: request.price_per_kg || 2
-      });
+  const showToast = (message: string, type: string) => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 5000);
+  };
 
-      // Update recycler stats
-      const recyclerStatsRef = ref(db, `Recyclers/${recyclerId}/stats`);
-      const statsSnapshot = await get(recyclerStatsRef);
-      const currentStats = statsSnapshot.val() || {};
-      
-      await set(recyclerStatsRef, {
-        totalReceived: (currentStats.totalReceived || 0) + inputWeight,
-        totalProcessed: (currentStats.totalProcessed || 0) + outputWeight,
-        lastProcessedAt: new Date().toISOString(),
-        totalTransactions: (currentStats.totalTransactions || 0) + 1
-      });
-
-      alert(`Successfully processed ${inputWeight}kg into ${outputWeight}kg recyclable material!`);
-      setShowReceiveModal(false);
-      setSelectedRequest(null);
-      
-    } catch (error) {
-      console.error('Error processing waste:', error);
-      alert('Failed to process waste. Please try again.');
+  const getRoleDisplayName = (role: string) => {
+    switch (role) {
+      case 'aggregator': return 'Aggregator';
+      case 'field_operator': return 'Field Operator';
+      case 'super_admin': return 'Super Admin';
+      case 'platform_manager': return 'Platform Manager';
+      case 'platform_leadership': return 'Platform Leadership';
+      case 'sustainability_team': return 'Sustainability Team';
+      case 'civil_society': return 'Civil Society';
+      case 'policy_maker': return 'Policy Maker';
+      case 'client': return 'Client';
+      default: return USER_ROLES[role as keyof typeof USER_ROLES]?.name || role;
     }
   };
 
-  const recordSale = async (sale: Omit<SaleRecord, 'id' | 'saleDate'>) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.email || !formData.password || !formData.firstName || !formData.role) {
+      showToast('Please fill in all required fields', 'error');
+      return;
+    }
+
     try {
-      const recyclerId = auth.currentUser?.uid;
-      if (!recyclerId) throw new Error('No recycler ID');
-
-      const salesRef = ref(db, `Recyclers/${recyclerId}/sales`);
-      const newSaleRef = push(salesRef);
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const uid = userCredential.user.uid;
       
-      await set(newSaleRef, {
-        ...sale,
-        saleDate: new Date().toISOString(),
-        status: 'completed',
-        recordedBy: recyclerId
+      const roleConfig = USER_ROLES[formData.role as keyof typeof USER_ROLES];
+      const nodePath = roleConfig?.node || 'Users';
+      
+      const userData: any = {
+        uid: uid,
+        email: formData.email,
+        firstName: formData.firstName,
+        LastName: formData.lastName,
+        name: `${formData.firstName} ${formData.lastName}`.trim(),
+        role: formData.role,
+        phone: formData.phone || '',
+        phoneNumber: formData.phone || '',
+        district: formData.district || '',
+        region: formData.region || '',
+        organization: formData.organization || '',
+        status: formData.status === 'active' ? 'active' : 'pending',
+        createdAt: new Date().toISOString(),
+        createdBy: auth.currentUser?.uid
+      };
+      
+      // Add role-specific fields
+      if (formData.role === 'client') {
+        userData.location = formData.location || '';
+        userData.SettlementType = formData.settlementType || 'Household';
+        userData.gpsAddress = formData.gpsAddress || '';
+        userData.ghCardNo = formData.ghCardNo || '';
+        userData.userType = 'client';
+        userData.isActive = true;
+      } else if (formData.role === 'aggregator') {
+        userData.WMSTYPE = 'Recycle';
+        userData.WMSCATEGORY = 'Primary';
+        userData.detailsComp = true;
+        userData.wasteManagementInfo = {
+          CompanyName: formData.organization || 'Aggregation Facility',
+          location: formData.district,
+          RecycleType: 'Primary',
+          employees: '1',
+          district: formData.district
+        };
+      } else if (formData.role === 'field_operator') {
+        userData.assignedDistrict = formData.district;
+        userData.status = 'active';
+      } else if (formData.role === 'government') {
+        userData.department = formData.department || '';
+      } else if (formData.role === 'policy_maker') {
+        userData.position = formData.position || '';
+      } else if (formData.role === 'regulator') {
+        userData.agency = formData.agency || '';
+      }
+      
+      await set(ref(db, `${nodePath}/${uid}`), userData);
+      
+      const auditRef = push(ref(db, 'auditLogs'));
+      await set(auditRef, {
+        action: 'user_created',
+        userId: uid,
+        userEmail: formData.email,
+        role: formData.role,
+        createdBy: auth.currentUser?.uid,
+        timestamp: new Date().toISOString()
       });
-
-      // Update revenue stats
-      const recyclerStatsRef = ref(db, `Recyclers/${recyclerId}/stats`);
-      const statsSnapshot = await get(recyclerStatsRef);
-      const currentStats = statsSnapshot.val() || {};
       
-      await update(recyclerStatsRef, {
-        totalRevenue: (currentStats.totalRevenue || 0) + sale.totalAmount,
-        lastSaleAt: new Date().toISOString()
-      });
-
-      alert(`Sale recorded! Total: ₵${sale.totalAmount.toLocaleString()}`);
-      setShowSaleModal(false);
+      showToast(`User ${formData.firstName} ${formData.lastName} created successfully!`, 'success');
+      setShowCreateModal(false);
+      resetForm();
+      fetchAllUsers();
       
-    } catch (error) {
-      console.error('Error recording sale:', error);
-      alert('Failed to record sale. Please try again.');
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      showToast(error.message || 'Failed to create user', 'error');
     }
   };
 
-  const getFilteredHistory = () => {
-    if (!filterDate) return processingHistory;
-    return processingHistory.filter(record => 
-      record.processedAt?.startsWith(filterDate)
-    );
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+
+    try {
+      const roleConfig = USER_ROLES[formData.role as keyof typeof USER_ROLES];
+      const nodePath = roleConfig?.node || 'Users';
+      
+      const userRef = ref(db, `${nodePath}/${selectedUser.id}`);
+      
+      const updateData: any = {
+        firstName: formData.firstName,
+        LastName: formData.lastName,
+        name: `${formData.firstName} ${formData.lastName}`.trim(),
+        phone: formData.phone,
+        phoneNumber: formData.phone,
+        district: formData.district,
+        region: formData.region,
+        organization: formData.organization,
+        status: formData.status,
+        updatedAt: new Date().toISOString(),
+        updatedBy: auth.currentUser?.uid
+      };
+      
+      if (formData.role === 'client') {
+        updateData.location = formData.location;
+        updateData.SettlementType = formData.settlementType;
+        updateData.gpsAddress = formData.gpsAddress;
+        updateData.ghCardNo = formData.ghCardNo;
+      }
+      
+      await update(userRef, updateData);
+      
+      const auditRef = push(ref(db, 'auditLogs'));
+      await set(auditRef, {
+        action: 'user_updated',
+        userId: selectedUser.uid,
+        userEmail: selectedUser.email,
+        updatedBy: auth.currentUser?.uid,
+        timestamp: new Date().toISOString()
+      });
+      
+      showToast(`User updated successfully!`, 'success');
+      setShowEditModal(false);
+      setSelectedUser(null);
+      fetchAllUsers();
+    } catch (error) {
+      console.error('Error updating user:', error);
+      showToast('Failed to update user', 'error');
+    }
   };
 
-  const getFilteredSales = () => {
-    if (!filterDate) return salesHistory;
-    return salesHistory.filter(sale => 
-      sale.saleDate?.startsWith(filterDate)
-    );
+  const handleDeleteUser = async (user: User) => {
+    if (!confirm(`Are you sure you want to delete ${user.name || user.firstName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      let nodePath = '';
+      if (user.role === 'super_admin') nodePath = 'Admin';
+      else if (user.role === 'client') nodePath = 'Clients';
+      else if (user.role === 'aggregator') nodePath = 'Aggregators';
+      else if (user.role === 'field_operator') nodePath = 'FieldOperators';
+      else nodePath = 'Users';
+      
+      await remove(ref(db, `${nodePath}/${user.id}`));
+      
+      const auditRef = push(ref(db, 'auditLogs'));
+      await set(auditRef, {
+        action: 'user_deleted',
+        userId: user.uid,
+        userEmail: user.email,
+        deletedBy: auth.currentUser?.uid,
+        timestamp: new Date().toISOString()
+      });
+      
+      showToast(`User deleted successfully!`, 'success');
+      fetchAllUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      showToast('Failed to delete user', 'error');
+    }
   };
+
+  const handleSuspendUser = async (user: User) => {
+    const newStatus = user.status === 'suspended' ? 'active' : 'suspended';
+    
+    try {
+      let nodePath = '';
+      if (user.role === 'super_admin') nodePath = 'Admin';
+      else if (user.role === 'client') nodePath = 'Clients';
+      else if (user.role === 'aggregator') nodePath = 'Aggregators';
+      else if (user.role === 'field_operator') nodePath = 'FieldOperators';
+      else nodePath = 'Users';
+      
+      await update(ref(db, `${nodePath}/${user.id}`), {
+        status: newStatus,
+        updatedAt: new Date().toISOString()
+      });
+      
+      showToast(`User ${user.firstName || user.name} ${newStatus === 'suspended' ? 'suspended' : 'activated'}!`, 'success');
+      fetchAllUsers();
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      showToast('Failed to update user status', 'error');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      email: '',
+      password: '',
+      firstName: '',
+      lastName: '',
+      role: '',
+      organization: '',
+      phone: '',
+      district: '',
+      region: '',
+      location: '',
+      settlementType: '',
+      gpsAddress: '',
+      ghCardNo: '',
+      department: '',
+      position: '',
+      agency: '',
+      status: 'pending'
+    });
+  };
+
+  const openEditModal = (user: User) => {
+    setSelectedUser(user);
+    setFormData({
+      email: user.email,
+      password: '',
+      firstName: user.firstName || user.name?.split(' ')[0] || '',
+      lastName: user.LastName || user.name?.split(' ').slice(1).join(' ') || '',
+      role: user.role,
+      organization: user.organization || user.wasteManagementInfo?.CompanyName || '',
+      phone: user.phone || user.phoneNumber || '',
+      district: user.district || user.wasteManagementInfo?.district || '',
+      region: user.region || '',
+      location: user.location || '',
+      settlementType: user.settlementType || '',
+      gpsAddress: user.gpsAddress || '',
+      ghCardNo: user.ghCardNo || '',
+      department: (user as any).department || '',
+      position: (user as any).position || '',
+      agency: (user as any).agency || '',
+      status: user.status
+    });
+    setShowEditModal(true);
+  };
+
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = searchTerm === '' || 
+      (user.firstName || user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  const getRoleCount = (role: string) => users.filter(u => u.role === role).length;
 
   if (loading) {
     return (
       <div className={styles.loadingContainer}>
         <div className={styles.spinner}></div>
-        <p>Loading recycler dashboard...</p>
+        <p>Loading users...</p>
       </div>
     );
   }
 
   return (
     <div className={styles.container}>
-      {/* Header */}
       <div className={styles.header}>
         <div>
-          <h1>♻️ Recycler Dashboard</h1>
-          <p>Welcome, {recyclerData?.firstName || recyclerData?.wasteManagementInfo?.CompanyName || 'Recycler'}</p>
+          <h1>👥 User Management</h1>
+          <p>Manage all platform users - Aggregators, Field Operators, Businesses, Government, NGOs, and more</p>
         </div>
-        <div className={styles.dateBadge}>
-          {new Date().toLocaleDateString(undefined, { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          })}
-        </div>
+        <button 
+          className={styles.createButton}
+          onClick={() => {
+            resetForm();
+            setShowCreateModal(true);
+          }}
+        >
+          + Create New User
+        </button>
       </div>
 
-      {/* Stats Grid */}
+      {/* Main Statistics Cards */}
       <div className={styles.statsGrid}>
         <div className={styles.statCard}>
-          <div className={styles.statIcon}>📦</div>
+          <div className={styles.statIcon}>👥</div>
           <div className={styles.statInfo}>
-            <div className={styles.statValue}>{stats.totalWeightProcessed.toLocaleString()} kg</div>
-            <div className={styles.statLabel}>Pending Collection</div>
+            <div className={styles.statValue}>{users.length}</div>
+            <div className={styles.statLabel}>Total Users</div>
           </div>
         </div>
-        <div className={styles.statCard}>
-          <div className={styles.statIcon}>⚙️</div>
+        <div className={`${styles.statCard} ${styles.active}`}>
+          <div className={styles.statIcon}>🟢</div>
           <div className={styles.statInfo}>
-            <div className={styles.statValue}>{stats.totalProcessed.toLocaleString()} kg</div>
-            <div className={styles.statLabel}>Total Processed</div>
+            <div className={styles.statValue}>{users.filter(u => u.status === 'active').length}</div>
+            <div className={styles.statLabel}>Active</div>
           </div>
         </div>
-        <div className={styles.statCard}>
-          <div className={styles.statIcon}>💰</div>
+        <div className={`${styles.statCard} ${styles.pending}`}>
+          <div className={styles.statIcon}>⏳</div>
           <div className={styles.statInfo}>
-            <div className={styles.statValue}>₵{stats.totalRevenue.toLocaleString()}</div>
-            <div className={styles.statLabel}>Total Revenue</div>
+            <div className={styles.statValue}>{users.filter(u => u.status === 'pending').length}</div>
+            <div className={styles.statLabel}>Pending</div>
           </div>
         </div>
-        <div className={styles.statCard}>
-          <div className={styles.statIcon}>✅</div>
+        <div className={`${styles.statCard} ${styles.suspended}`}>
+          <div className={styles.statIcon}>⛔</div>
           <div className={styles.statInfo}>
-            <div className={styles.statValue}>{stats.completedToday}</div>
-            <div className={styles.statLabel}>Completed Today</div>
+            <div className={styles.statValue}>{users.filter(u => u.status === 'suspended').length}</div>
+            <div className={styles.statLabel}>Suspended</div>
           </div>
         </div>
       </div>
 
-      {/* Company Info Card */}
-      {recyclerData?.wasteManagementInfo && (
-        <div className={styles.companyCard}>
-          <div className={styles.companyHeader}>
-            <span className={styles.companyIcon}>🏭</span>
-            <div>
-              <h3>{recyclerData.wasteManagementInfo.CompanyName || 'Recycling Facility'}</h3>
-              <p>{recyclerData.wasteManagementInfo.RecycleType || 'Recycler'} | {recyclerData.wasteManagementInfo.location || 'Location not set'}</p>
+      {/* Role Cards Section with Toggle */}
+      <div className={styles.sectionHeaderWithToggle}>
+        <h3>📊 Role Distribution</h3>
+        <button
+          className={styles.toggleCardsBtn}
+          onClick={() => setShowRoleCards(!showRoleCards)}
+        >
+          {showRoleCards ? 'Hide Cards ▲' : 'Show Cards ▼'}
+        </button>
+      </div>
+
+      {showRoleCards && (
+        <div className={styles.roleCardsGrid}>
+          {/* Super Admin */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.super_admin.color }}>
+            <div className={styles.roleCardIcon}>👑</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Super Admin</div>
+              <div className={styles.roleCardCount}>{getRoleCount('super_admin')}</div>
             </div>
           </div>
-          <div className={styles.companyDetails}>
-            <span>📞 {recyclerData.phone || recyclerData.wasteManagementInfo?.ghMobileNumber || 'N/A'}</span>
-            <span>📍 {recyclerData.wasteManagementInfo.district || 'District not set'}</span>
-            <span>👥 {recyclerData.wasteManagementInfo.employees || 'N/A'} Employees</span>
+          
+          {/* Clients */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.client.color }}>
+            <div className={styles.roleCardIcon}>🏠</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Clients</div>
+              <div className={styles.roleCardCount}>{getRoleCount('client')}</div>
+            </div>
+          </div>
+
+          {/* Aggregators (includes both Aggregators and Recycling Hubs) */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.aggregator.color }}>
+            <div className={styles.roleCardIcon}>🏢</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Aggregators</div>
+              <div className={styles.roleCardCount}>{getRoleCount('aggregator')}</div>
+            </div>
+          </div>
+          
+          {/* Field Operators */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.field_operator.color }}>
+            <div className={styles.roleCardIcon}>👷</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Field Operators</div>
+              <div className={styles.roleCardCount}>{getRoleCount('field_operator')}</div>
+            </div>
+          </div>
+
+          {/* Businesses */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.business.color }}>
+            <div className={styles.roleCardIcon}>🏭</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Businesses</div>
+              <div className={styles.roleCardCount}>{getRoleCount('business')}</div>
+            </div>
+          </div>
+          
+          {/* Investors */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.investor.color }}>
+            <div className={styles.roleCardIcon}>💰</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Investors</div>
+              <div className={styles.roleCardCount}>{getRoleCount('investor')}</div>
+            </div>
+          </div>
+
+          {/* Government */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.government.color }}>
+            <div className={styles.roleCardIcon}>🏛️</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Government</div>
+              <div className={styles.roleCardCount}>{getRoleCount('government')}</div>
+            </div>
+          </div>
+          
+          {/* Regulators */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.regulator.color }}>
+            <div className={styles.roleCardIcon}>⚖️</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Regulators</div>
+              <div className={styles.roleCardCount}>{getRoleCount('regulator')}</div>
+            </div>
+          </div>
+          
+          {/* Policy Makers */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.policy_maker.color }}>
+            <div className={styles.roleCardIcon}>📜</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Policy Makers</div>
+              <div className={styles.roleCardCount}>{getRoleCount('policy_maker')}</div>
+            </div>
+          </div>
+
+          {/* NGOs */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.ngo.color }}>
+            <div className={styles.roleCardIcon}>🤝</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>NGOs</div>
+              <div className={styles.roleCardCount}>{getRoleCount('ngo')}</div>
+            </div>
+          </div>
+          
+          {/* Sustainability Team */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.sustainability_team.color }}>
+            <div className={styles.roleCardIcon}>🌱</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Sustainability Team</div>
+              <div className={styles.roleCardCount}>{getRoleCount('sustainability_team')}</div>
+            </div>
+          </div>
+          
+          {/* Civil Society */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.civil_society.color }}>
+            <div className={styles.roleCardIcon}>👥</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Civil Society</div>
+              <div className={styles.roleCardCount}>{getRoleCount('civil_society')}</div>
+            </div>
+          </div>
+
+          {/* Platform Managers */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.platform_manager.color }}>
+            <div className={styles.roleCardIcon}>📱</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Platform Managers</div>
+              <div className={styles.roleCardCount}>{getRoleCount('platform_manager')}</div>
+            </div>
+          </div>
+          
+          {/* Platform Leadership */}
+          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.platform_leadership.color }}>
+            <div className={styles.roleCardIcon}>👑</div>
+            <div className={styles.roleCardInfo}>
+              <div className={styles.roleCardName}>Platform Leadership</div>
+              <div className={styles.roleCardCount}>{getRoleCount('platform_leadership')}</div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Tab Navigation */}
-      <div className={styles.tabBar}>
-        <button 
-          className={`${styles.tab} ${activeTab === 'assigned' ? styles.active : ''}`}
-          onClick={() => setActiveTab('assigned')}
+      {/* Filters */}
+      <div className={styles.filtersBar}>
+        <div className={styles.searchWrapper}>
+          <span className={styles.searchIcon}>🔍</span>
+          <input
+            type="text"
+            placeholder="Search by name or email..."
+            className={styles.searchInput}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <select 
+          className={styles.filterSelect}
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value)}
         >
-          📋 Assigned Collections ({assignedRequests.length})
-        </button>
-        <button 
-          className={`${styles.tab} ${activeTab === 'processing' ? styles.active : ''}`}
-          onClick={() => setActiveTab('processing')}
+          <option value="all">All Roles</option>
+          <option value="super_admin">👑 Super Admin</option>
+          <option value="aggregator">🏢 Aggregator</option>
+          <option value="field_operator">👷 Field Operator</option>
+          <option value="business">🏭 Business</option>
+          <option value="investor">💰 Investor</option>
+          <option value="government">🏛️ Government</option>
+          <option value="regulator">⚖️ Regulator</option>
+          <option value="policy_maker">📜 Policy Maker</option>
+          <option value="ngo">🤝 NGO</option>
+          <option value="sustainability_team">🌱 Sustainability Team</option>
+          <option value="civil_society">👥 Civil Society</option>
+          <option value="platform_manager">📱 Platform Manager</option>
+          <option value="platform_leadership">👑 Platform Leadership</option>
+          <option value="client">🏠 Client</option>
+        </select>
+
+        <select 
+          className={styles.filterSelect}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
         >
-          📊 Processing History ({processingHistory.length})
-        </button>
-        <button 
-          className={`${styles.tab} ${activeTab === 'sales' ? styles.active : ''}`}
-          onClick={() => setActiveTab('sales')}
-        >
-          💰 Sales ({salesHistory.length})
-        </button>
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="suspended">Suspended</option>
+        </select>
       </div>
 
-      {/* Assigned Collections Tab */}
-      {activeTab === 'assigned' && (
-        <div className={styles.tabContent}>
-          <div className={styles.sectionHeader}>
-            <h2>Waste Collections Assigned to You</h2>
-            <p>Process incoming waste to add to your recycling inventory</p>
-          </div>
-          
-          {assignedRequests.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>📭</div>
-              <h3>No assigned collections</h3>
-              <p>You don't have any waste collections assigned at the moment.</p>
-            </div>
-          ) : (
-            <div className={styles.requestsGrid}>
-              {assignedRequests.map((request) => (
-                <div key={request.id} className={styles.requestCard}>
-                  <div className={styles.requestHeader}>
-                    <div>
-                      <h3>{request.client_name || 'Unknown Client'}</h3>
-                      <span className={styles.requestId}>ID: {request.id.slice(-8)}</span>
-                    </div>
-                    <span className={`${styles.status} ${styles[request.status || 'searching']}`}>
-                      {request.status === 'accepted' ? 'Accepted' : 
-                       request.status === 'onride' ? 'In Transit' : 
-                       request.status === 'ended' ? 'Completed' : 'Pending'}
-                    </span>
+      {/* Users Table */}
+      <div className={styles.tableContainer}>
+        <table className={styles.userTable}>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Role</th>
+              <th>Organization/Location</th>
+              <th>District/Region</th>
+              <th>Contact</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUsers.map((user) => (
+              <tr key={user.id}>
+                <td className={styles.userCell}>
+                  <div className={styles.userAvatar}>
+                    {((user.firstName || user.name || 'U').charAt(0)).toUpperCase()}
                   </div>
-                  
-                  <div className={styles.requestDetails}>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailIcon}>📍</span>
-                      <span>{request.Client_address || request.location || 'Address not specified'}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailIcon}>🗑️</span>
-                      <span>{request.waste_category || request.category || 'General Waste'}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailIcon}>⚖️</span>
-                      <span>Expected: {request.weight_kg || request.weight || '?'} kg</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailIcon}>💰</span>
-                      <span>Rate: ₵{request.price_per_kg || 2}/kg</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailIcon}>📞</span>
-                      <span>{request.client_phone || 'No phone'}</span>
-                    </div>
-                    <div className={styles.detailRow}>
-                      <span className={styles.detailIcon}>📅</span>
-                      <span>{request.created_at ? new Date(request.created_at).toLocaleString() : 'Date not set'}</span>
-                    </div>
+                  <div className={styles.userInfo}>
+                    <div className={styles.userName}>{user.firstName || user.name} {user.LastName || ''}</div>
+                    <div className={styles.userEmail}>{user.email}</div>
                   </div>
-                  
+                </td>
+                <td>
+                  <span className={styles.roleBadge}>
+                    {USER_ROLES[user.role as keyof typeof USER_ROLES]?.icon || '👤'}
+                    {' '}
+                    {getRoleDisplayName(user.role)}
+                  </span>
+                </td>
+                <td>{user.organization || user.location || user.wasteManagementInfo?.CompanyName || '—'}</td>
+                <td>{user.district || user.region || user.wasteManagementInfo?.district || '—'}</td>
+                <td>{user.phone || user.phoneNumber || '—'}</td>
+                <td>
+                  <span className={`${styles.statusBadge} ${styles[user.status]}`}>
+                    {user.status === 'active' ? 'Active' : 
+                     user.status === 'pending' ? 'Pending' : 'Suspended'}
+                  </span>
+                </td>
+                <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                <td className={styles.actionsCell}>
                   <button 
-                    className={styles.processBtn}
-                    onClick={() => {
-                      setSelectedRequest(request);
-                      setShowReceiveModal(true);
-                    }}
+                    className={styles.editBtn}
+                    onClick={() => openEditModal(user)}
+                    title="Edit User"
                   >
-                    ⚙️ Process Waste
+                    ✏️
                   </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                  <button 
+                    className={styles.suspendBtn}
+                    onClick={() => handleSuspendUser(user)}
+                    title={user.status === 'suspended' ? 'Activate User' : 'Suspend User'}
+                  >
+                    {user.status === 'suspended' ? '🔓' : '🔒'}
+                  </button>
+                  <button 
+                    className={styles.deleteBtn}
+                    onClick={() => handleDeleteUser(user)}
+                    title="Delete User"
+                  >
+                    🗑️
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-      {/* Processing History Tab */}
-      {activeTab === 'processing' && (
-        <div className={styles.tabContent}>
-          <div className={styles.sectionHeader}>
-            <h2>Processing History</h2>
-            <div className={styles.filterGroup}>
-              <input
-                type="date"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className={styles.dateFilter}
-                placeholder="Filter by date"
-              />
-              {filterDate && (
-                <button onClick={() => setFilterDate('')} className={styles.clearFilter}>
-                  Clear
-                </button>
-              )}
-            </div>
+        {filteredUsers.length === 0 && (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyIcon}>📭</div>
+            <h3>No users found</h3>
+            <p>Try adjusting your filters or create a new user</p>
           </div>
-          
-          {getFilteredHistory().length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>📊</div>
-              <h3>No processing records</h3>
-              <p>Start processing waste to see your history here.</p>
-            </div>
-          ) : (
-            <div className={styles.historyTable}>
-              <table className={styles.dataTable}>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Client</th>
-                    <th>Category</th>
-                    <th>Grade</th>
-                    <th>Input (kg)</th>
-                    <th>Output (kg)</th>
-                    <th>Yield</th>
-                    <th>Batch #</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {getFilteredHistory().map((record) => (
-                    <tr key={record.id}>
-                      <td>{new Date(record.processedAt).toLocaleDateString()}</td>
-                      <td>{record.clientName}</td>
-                      <td>{record.wasteCategory}</td>
-                      <td>{record.grade}</td>
-                      <td>{record.inputWeight.toLocaleString()}</td>
-                      <td>{record.outputWeight.toLocaleString()}</td>
-                      <td className={styles.yieldCell}>
-                        {((record.outputWeight / record.inputWeight) * 100).toFixed(1)}%
-                      </td>
-                      <td><code className={styles.batchCode}>{record.batchNumber.slice(-12)}</code></td>
-                      <td>{record.notes || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className={styles.tableFooter}>
-                    <td colSpan={4}><strong>Totals:</strong></td>
-                    <td><strong>{getFilteredHistory().reduce((sum, r) => sum + r.inputWeight, 0).toLocaleString()} kg</strong></td>
-                    <td><strong>{getFilteredHistory().reduce((sum, r) => sum + r.outputWeight, 0).toLocaleString()} kg</strong></td>
-                    <td colSpan={3}></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Sales Tab */}
-      {activeTab === 'sales' && (
-        <div className={styles.tabContent}>
-          <div className={styles.sectionHeader}>
-            <h2>Sales Records</h2>
-            <div>
-              <button 
-                className={styles.sellBtn}
-                onClick={() => setShowSaleModal(true)}
-              >
-                + Record Sale
-              </button>
-            </div>
-          </div>
-          
-          {getFilteredSales().length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>💰</div>
-              <h3>No sales recorded</h3>
-              <p>Record your first sale to start tracking revenue.</p>
-            </div>
-          ) : (
-            <div className={styles.salesTable}>
-              <table className={styles.dataTable}>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Buyer</th>
-                    <th>Category</th>
-                    <th>Grade</th>
-                    <th>Quantity (kg)</th>
-                    <th>Price/kg (₵)</th>
-                    <th>Total (₵)</th>
-                    <th>Status</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {getFilteredSales().map((sale) => (
-                    <tr key={sale.id}>
-                      <td>{new Date(sale.saleDate).toLocaleDateString()}</td>
-                      <td>{sale.buyerName}</td>
-                      <td>{sale.wasteCategory}</td>
-                      <td>{sale.grade}</td>
-                      <td>{sale.quantity.toLocaleString()}</td>
-                      <td>₵{sale.pricePerKg}</td>
-                      <td className={styles.totalCell}>₵{sale.totalAmount.toLocaleString()}</td>
-                      <td>
-                        <span className={`${styles.saleStatus} ${styles[sale.status]}`}>
-                          {sale.status}
-                        </span>
-                      </td>
-                      <td>{sale.notes || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className={styles.tableFooter}>
-                    <td colSpan={6}><strong>Total Revenue:</strong></td>
-                    <td><strong>₵{getFilteredSales().reduce((sum, s) => sum + s.totalAmount, 0).toLocaleString()}</strong></td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Process Waste Modal */}
-      {showReceiveModal && selectedRequest && (
-        <div className={styles.modal} onClick={() => setShowReceiveModal(false)}>
+      {/* Create User Modal */}
+      {showCreateModal && (
+        <div className={styles.modal} onClick={() => setShowCreateModal(false)}>
           <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <h2>Process Waste Collection</h2>
-              <button className={styles.closeBtn} onClick={() => setShowReceiveModal(false)}>×</button>
+              <h2>➕ Create New User</h2>
+              <button className={styles.closeBtn} onClick={() => setShowCreateModal(false)}>×</button>
             </div>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const formData = new FormData(e.currentTarget);
-              receiveAndProcessWaste(
-                selectedRequest,
-                parseFloat(formData.get('inputWeight') as string),
-                parseFloat(formData.get('outputWeight') as string),
-                formData.get('grade') as string,
-                formData.get('notes') as string
-              );
-            }}>
-              <div className={styles.formGroup}>
-                <label>Client</label>
-                <input type="text" value={selectedRequest.client_name} disabled />
+            
+            <form onSubmit={handleCreateUser} className={styles.form}>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+                    placeholder="Enter first name"
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+                    placeholder="Enter last name"
+                  />
+                </div>
               </div>
-              <div className={styles.formGroup}>
-                <label>Waste Category</label>
-                <input type="text" value={selectedRequest.waste_category || selectedRequest.category} disabled />
+
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    placeholder="user@example.com"
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    placeholder="At least 6 characters"
+                  />
+                </div>
               </div>
+
               <div className={styles.formGroup}>
-                <label>Expected Weight (kg)</label>
-                <input type="text" value={selectedRequest.weight_kg || selectedRequest.weight} disabled />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Actual Input Weight (kg) *</label>
-                <input type="number" name="inputWeight" required step="0.1" placeholder="Enter actual weight received" />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Output Weight After Processing (kg) *</label>
-                <input type="number" name="outputWeight" required step="0.1" placeholder="Enter processed weight" />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Grade *</label>
-                <select name="grade" required>
-                  <option value="">Select grade</option>
-                  <option value="G1">G1 - Not Clean (From dump sites)</option>
-                  <option value="G2">G2 - Partially Clean (From streets)</option>
-                  <option value="G3">G3 - Very Clean (From homes/orgs)</option>
+                <label>Role *</label>
+                <select
+                  required
+                  value={formData.role}
+                  onChange={(e) => setFormData({...formData, role: e.target.value})}
+                >
+                  <option value="">Select a role</option>
+                  <optgroup label="Administration">
+                    <option value="super_admin">👑 Super Admin</option>
+                  </optgroup>
+                  <optgroup label="Waste Generators">
+                    <option value="client">🏠 Client (Household/Institution/Organization)</option>
+                  </optgroup>
+                  <optgroup label="Waste Management">
+                    <option value="aggregator">🏢 Aggregator (Collection & Recycling)</option>
+                    <option value="field_operator">👷 Field Operator</option>
+                  </optgroup>
+                  <optgroup label="Business & Investment">
+                    <option value="business">🏭 Business</option>
+                    <option value="investor">💰 Investor</option>
+                  </optgroup>
+                  <optgroup label="Government & Regulatory">
+                    <option value="government">🏛️ Government</option>
+                    <option value="regulator">⚖️ Regulator</option>
+                    <option value="policy_maker">📜 Policy Maker</option>
+                  </optgroup>
+                  <optgroup label="Civil Society & Sustainability">
+                    <option value="ngo">🤝 NGO</option>
+                    <option value="sustainability_team">🌱 Sustainability Team</option>
+                    <option value="civil_society">👥 Civil Society</option>
+                  </optgroup>
+                  <optgroup label="Platform Management">
+                    <option value="platform_manager">📱 Platform Manager</option>
+                    <option value="platform_leadership">👑 Platform Leadership</option>
+                  </optgroup>
                 </select>
               </div>
+
               <div className={styles.formGroup}>
-                <label>Processing Notes</label>
-                <textarea name="notes" rows={3} placeholder="Any notes about the processing..."></textarea>
+                <label>Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                >
+                  <option value="pending">Pending Approval</option>
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                </select>
               </div>
+
+              {/* Client-specific fields */}
+              {formData.role === 'client' && (
+                <>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label>Settlement Type</label>
+                      <select value={formData.settlementType} onChange={(e) => setFormData({...formData, settlementType: e.target.value})}>
+                        <option value="Household">Household</option>
+                        <option value="Institution">Institution</option>
+                        <option value="Organization">Organization</option>
+                        <option value="Commercial">Commercial</option>
+                      </select>
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Location</label>
+                      <input type="text" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} placeholder="Address or area" />
+                    </div>
+                  </div>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label>GPS Address</label>
+                      <input type="text" value={formData.gpsAddress} onChange={(e) => setFormData({...formData, gpsAddress: e.target.value})} placeholder="GPS coordinates" />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>GH Card No</label>
+                      <input type="text" value={formData.ghCardNo} onChange={(e) => setFormData({...formData, ghCardNo: e.target.value})} placeholder="Ghana Card number" />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>Phone</label>
+                  <input type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} placeholder="Phone number" />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Organization/Company</label>
+                  <input type="text" value={formData.organization} onChange={(e) => setFormData({...formData, organization: e.target.value})} placeholder="Company name" />
+                </div>
+              </div>
+
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>District</label>
+                  <input type="text" value={formData.district} onChange={(e) => setFormData({...formData, district: e.target.value})} placeholder="Operating district" />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Region</label>
+                  <input type="text" value={formData.region} onChange={(e) => setFormData({...formData, region: e.target.value})} placeholder="Region" />
+                </div>
+              </div>
+
+              {formData.role && (
+                <div className={styles.roleInfo}>
+                  <div className={styles.roleIcon}>{USER_ROLES[formData.role as keyof typeof USER_ROLES]?.icon || '👤'}</div>
+                  <div>
+                    <strong>{USER_ROLES[formData.role as keyof typeof USER_ROLES]?.name}</strong>
+                    <p>{USER_ROLES[formData.role as keyof typeof USER_ROLES]?.description}</p>
+                    <small>Category: {USER_ROLES[formData.role as keyof typeof USER_ROLES]?.category}</small>
+                  </div>
+                </div>
+              )}
+
               <div className={styles.formActions}>
-                <button type="button" className={styles.cancelBtn} onClick={() => setShowReceiveModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className={styles.submitBtn}>
-                  Process Waste
-                </button>
+                <button type="button" className={styles.cancelBtn} onClick={() => setShowCreateModal(false)}>Cancel</button>
+                <button type="submit" className={styles.submitBtn}>Create User</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Sale Modal */}
-      {showSaleModal && (
-        <div className={styles.modal} onClick={() => setShowSaleModal(false)}>
+      {/* Edit User Modal */}
+      {showEditModal && selectedUser && (
+        <div className={styles.modal} onClick={() => setShowEditModal(false)}>
           <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <h2>Record Sale</h2>
-              <button className={styles.closeBtn} onClick={() => setShowSaleModal(false)}>×</button>
+              <h2>✏️ Edit User</h2>
+              <button className={styles.closeBtn} onClick={() => setShowEditModal(false)}>×</button>
             </div>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const formData = new FormData(e.currentTarget);
-              const quantity = parseFloat(formData.get('quantity') as string);
-              const pricePerKg = parseFloat(formData.get('pricePerKg') as string);
-              recordSale({
-                buyerName: formData.get('buyerName') as string,
-                buyerContact: formData.get('buyerContact') as string,
-                wasteCategory: formData.get('category') as string,
-                grade: formData.get('grade') as string,
-                quantity: quantity,
-                pricePerKg: pricePerKg,
-                totalAmount: quantity * pricePerKg,
-                status: 'completed',
-                notes: formData.get('notes') as string
-              });
-            }}>
+            
+            <form onSubmit={handleUpdateUser} className={styles.form}>
               <div className={styles.formRow}>
                 <div className={styles.formGroup}>
-                  <label>Buyer Name *</label>
-                  <input type="text" name="buyerName" required placeholder="Enter buyer name" />
+                  <label>First Name</label>
+                  <input type="text" value={formData.firstName} onChange={(e) => setFormData({...formData, firstName: e.target.value})} />
                 </div>
                 <div className={styles.formGroup}>
-                  <label>Buyer Contact</label>
-                  <input type="tel" name="buyerContact" placeholder="Phone number" />
+                  <label>Last Name</label>
+                  <input type="text" value={formData.lastName} onChange={(e) => setFormData({...formData, lastName: e.target.value})} />
                 </div>
               </div>
-              <div className={styles.formRow}>
-                <div className={styles.formGroup}>
-                  <label>Category *</label>
-                  <select name="category" required>
-                    <option value="">Select category</option>
-                    <option value="Plastic">Plastic</option>
-                    <option value="Glass">Glass</option>
-                    <option value="Metal">Metal</option>
-                    <option value="Paper">Paper</option>
-                    <option value="Organic">Organic</option>
-                  </select>
-                </div>
-                <div className={styles.formGroup}>
-                  <label>Grade *</label>
-                  <select name="grade" required>
-                    <option value="">Select grade</option>
-                    <option value="G1">G1 - Basic Quality</option>
-                    <option value="G2">G2 - Standard Quality</option>
-                    <option value="G3">G3 - Premium Quality</option>
-                  </select>
-                </div>
-              </div>
-              <div className={styles.formRow}>
-                <div className={styles.formGroup}>
-                  <label>Quantity (kg) *</label>
-                  <input type="number" name="quantity" required step="0.1" placeholder="Quantity in kg" />
-                </div>
-                <div className={styles.formGroup}>
-                  <label>Price per kg (₵) *</label>
-                  <input type="number" name="pricePerKg" required step="0.01" placeholder="Price per kg" />
-                </div>
-              </div>
+
               <div className={styles.formGroup}>
-                <label>Notes (Optional)</label>
-                <textarea name="notes" rows={2} placeholder="Any additional notes..."></textarea>
+                <label>Email</label>
+                <input type="email" value={formData.email} disabled />
+                <small>Email cannot be changed</small>
               </div>
+
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>Role</label>
+                  <input type="text" value={formData.role} disabled />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Status</label>
+                  <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value as any})}>
+                    <option value="active">Active</option>
+                    <option value="pending">Pending</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              {selectedUser.role === 'client' && (
+                <>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label>Settlement Type</label>
+                      <input type="text" value={formData.settlementType} onChange={(e) => setFormData({...formData, settlementType: e.target.value})} />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Location</label>
+                      <input type="text" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className={styles.formRow}>
+                    <div className={styles.formGroup}>
+                      <label>GPS Address</label>
+                      <input type="text" value={formData.gpsAddress} onChange={(e) => setFormData({...formData, gpsAddress: e.target.value})} />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>GH Card No</label>
+                      <input type="text" value={formData.ghCardNo} onChange={(e) => setFormData({...formData, ghCardNo: e.target.value})} />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>Phone</label>
+                  <input type="tel" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Organization</label>
+                  <input type="text" value={formData.organization} onChange={(e) => setFormData({...formData, organization: e.target.value})} />
+                </div>
+              </div>
+
+              <div className={styles.formRow}>
+                <div className={styles.formGroup}>
+                  <label>District</label>
+                  <input type="text" value={formData.district} onChange={(e) => setFormData({...formData, district: e.target.value})} />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Region</label>
+                  <input type="text" value={formData.region} onChange={(e) => setFormData({...formData, region: e.target.value})} />
+                </div>
+              </div>
+
               <div className={styles.formActions}>
-                <button type="button" className={styles.cancelBtn} onClick={() => setShowSaleModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className={styles.submitBtn}>
-                  Record Sale
-                </button>
+                <button type="button" className={styles.cancelBtn} onClick={() => setShowEditModal(false)}>Cancel</button>
+                <button type="submit" className={styles.submitBtn}>Save Changes</button>
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`${styles.toast} ${styles[toast.type]}`}>
+          {toast.message}
         </div>
       )}
     </div>
