@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { ref, onValue, get, push, set } from 'firebase/database';
 import { useRouter } from 'next/navigation';
-import styles from './civil-society.module.css';
+import styles from './civilsociety.module.css';
 
 interface WasteRequest {
   id: string;
