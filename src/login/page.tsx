@@ -1,610 +1,235 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { ref, onValue, get } from 'firebase/database';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { ref, get } from 'firebase/database';
 import { useRouter } from 'next/navigation';
-import styles from './sustainability.module.css';
+import styles from "./loginstyle.module.css";
 
-interface WasteRequest {
-  id: string;
-  client_name?: string;
-  category?: string;
-  waste_category?: string;
-  waste_grade?: string;
-  status?: string;
-  weight?: string;
-  weight_kg?: number;
-  calculated_price?: number;
-  created_at?: string;
-  location?: string;
-  WMS_name?: string;
-}
-
-interface SustainabilityMetrics {
-  wasteDivertedLandfill: number;
-  recyclingRates: Record<string, number>;
-  carbonEmissionReduction: number;
-  plasticRecycled: number;
-  wasteRecoveryRate: number;
-  co2EquivalentAvoided: number;
-  waterSaved: number;
-  energySaved: number;
-  treesSaved: number;
-}
-
-interface MonthlyTrend {
-  month: string;
-  weight: number;
-  co2Saved: number;
-  plasticRecycled: number;
+interface ClientData {
+  email?: string;
+  firstName?: string;
+  LastName?: string;
+  role?: string;
 }
 
 interface AdminData {
   role?: string;
   name?: string;
+  email?: string;
 }
 
-interface SustainabilityData {
+interface RecyclerData {
   role?: string;
-  name?: string;
+  WMSTYPE?: string;
+  WMSCATEGORY?: string;
   firstName?: string;
+  name?: string;
+  wasteManagementInfo?: {
+    RecycleType?: string;
+  };
 }
 
-export default function SustainabilityPage() {
+export default function Login() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState('');
-  const [wasteRequests, setWasteRequests] = useState<WasteRequest[]>([]);
-  const [metrics, setMetrics] = useState<SustainabilityMetrics>({
-    wasteDivertedLandfill: 0,
-    recyclingRates: {},
-    carbonEmissionReduction: 0,
-    plasticRecycled: 0,
-    wasteRecoveryRate: 0,
-    co2EquivalentAvoided: 0,
-    waterSaved: 0,
-    energySaved: 0,
-    treesSaved: 0
-  });
-  const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrend[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const calculateMetrics = useCallback((requests: WasteRequest[]) => {
-    // Calculate total waste collected
-    const totalWaste = requests.reduce((sum, req) => sum + (req.weight_kg || 0), 0);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
     
-    // Calculate waste by category
-    const wasteByCategory: Record<string, number> = {};
-    requests.forEach(req => {
-      const category = req.waste_category || req.category || 'General';
-      const weight = req.weight_kg || 0;
-      wasteByCategory[category] = (wasteByCategory[category] || 0) + weight;
-    });
-    
-    // Calculate recycling rates (percentage of total)
-    const recyclingRates: Record<string, number> = {};
-    Object.entries(wasteByCategory).forEach(([category, weight]) => {
-      recyclingRates[category] = totalWaste > 0 ? (weight / totalWaste) * 100 : 0;
-    });
-    
-    // Calculate plastic recycled (Plastic + PET categories)
-    const plasticRecycled = (wasteByCategory['Plastic'] || 0) + (wasteByCategory['PET'] || 0);
-    
-    // Carbon emission reduction (1 ton recycled = 1.5 tons CO2 saved)
-    const carbonReduction = (totalWaste / 1000) * 1.5;
-    
-    // CO2 equivalent avoided (same as carbon reduction)
-    const co2Equivalent = carbonReduction;
-    
-    // Waste recovery rate (percentage of waste that was recycled)
-    const wasteRecoveryRate = totalWaste > 0 ? 85 : 0;
-    
-    // Additional environmental metrics
-    const waterSaved = (plasticRecycled / 1000) * 1800 + (wasteByCategory['Paper'] / 1000) * 7000;
-    const energySaved = (plasticRecycled / 1000) * 80 + (wasteByCategory['Metal'] / 1000) * 200;
-    const treesSaved = (wasteByCategory['Paper'] / 1000) * 17;
-    
-    setMetrics({
-      wasteDivertedLandfill: totalWaste,
-      recyclingRates,
-      carbonEmissionReduction: carbonReduction,
-      plasticRecycled,
-      wasteRecoveryRate,
-      co2EquivalentAvoided: co2Equivalent,
-      waterSaved: Math.round(waterSaved),
-      energySaved: Math.round(energySaved),
-      treesSaved: Math.round(treesSaved)
-    });
-  }, []);
-
-  const calculateMonthlyTrends = useCallback((requests: WasteRequest[]) => {
-    const monthlyData: Record<string, { weight: number; plastic: number }> = {};
-    
-    requests.forEach(req => {
-      if (req.created_at) {
-        const date = new Date(req.created_at);
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        const weight = req.weight_kg || 0;
-        const category = req.waste_category || req.category || 'General';
-        const isPlastic = category === 'Plastic' || category === 'PET';
-        
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = { weight: 0, plastic: 0 };
+    try {
+      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      const uid = userCred.user.uid;
+      
+      let role: string | null = null;
+      let redirectPath = '/dashboard';
+      
+      // 1. Check in Admin node (super_admin and admin roles)
+      const adminSnapshot = await get(ref(db, `Admin/${uid}`));
+      const adminData = adminSnapshot.val() as AdminData | null;
+      if (adminData && adminData.role) {
+        role = adminData.role;
+        if (role === 'super_admin') {
+          redirectPath = '/superadmin';
+        } else {
+          redirectPath = '/admin';
         }
-        monthlyData[monthKey].weight += weight;
-        if (isPlastic) monthlyData[monthKey].plastic += weight;
       }
-    });
-    
-    const trends = Object.entries(monthlyData)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-12)
-      .map(([month, data]) => ({
-        month: new Date(month).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-        weight: data.weight,
-        co2Saved: (data.weight / 1000) * 1.5,
-        plasticRecycled: data.plastic
-      }));
-    
-    setMonthlyTrends(trends);
-  }, []);
-
-  const loadWasteData = useCallback(() => {
-    const requestsRef = ref(db, 'ClientRequest');
-    
-    const unsubscribe = onValue(requestsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const requestsArray = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key]
-        })) as WasteRequest[];
+      
+      // 2. If not found in Admin, check in Recyclers node
+      if (!role) {
+        const recyclerSnapshot = await get(ref(db, `Recyclers/${uid}`));
+        const recyclerData = recyclerSnapshot.val() as RecyclerData | null;
         
-        // Only include completed requests (ended status)
-        const completedRequests = requestsArray.filter(req => req.status === 'ended');
-        setWasteRequests(completedRequests);
-        
-        calculateMetrics(completedRequests);
-        calculateMonthlyTrends(completedRequests);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [calculateMetrics, calculateMonthlyTrends]);
-
-  const checkAuthAndLoadData = useCallback(async () => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
-      try {
-        // Check in Admin node first
-        const adminRef = ref(db, `Admin/${user.uid}`);
-        const adminSnapshot = await get(adminRef);
-        const adminData = adminSnapshot.val() as AdminData | null;
-        
-        let role = adminData?.role;
-        let name = adminData?.name || user.email?.split('@')[0] || 'User';
-        
-        // If not admin, check in Sustainability node
-        if (!role) {
-          const sustainabilityRef = ref(db, `Sustainability/${user.uid}`);
-          const sustainabilitySnapshot = await get(sustainabilityRef);
-          const sustainabilityData = sustainabilitySnapshot.val() as SustainabilityData | null;
+        if (recyclerData) {
+          console.log('Recycler data found:', recyclerData);
           
-          if (sustainabilityData) {
-            role = sustainabilityData.role || 'sustainability_team';
-            name = sustainabilityData.name || sustainabilityData.firstName || user.email?.split('@')[0] || 'Sustainability Team';
+          // Check if user has role field
+          if (recyclerData.role) {
+            role = recyclerData.role;
+            if (role === 'recycler') {
+              redirectPath = '/recycler';
+            } else if (role === 'aggregator') {
+              redirectPath = '/aggregator';
+            }
+          }
+          // Check WMSTYPE field
+          else if (recyclerData.WMSTYPE === 'Recycle') {
+            role = 'recycler';
+            redirectPath = '/recycler';
+          }
+          // Check RecycleType in wasteManagementInfo
+          else if (recyclerData.wasteManagementInfo?.RecycleType === 'Secondary') {
+            role = 'aggregator';
+            redirectPath = '/aggregator';
+          }
+          else if (recyclerData.wasteManagementInfo?.RecycleType === 'Primary') {
+            role = 'recycler';
+            redirectPath = '/recycler';
+          }
+          // Check WMSCATEGORY
+          else if (recyclerData.WMSCATEGORY === 'Secondary') {
+            role = 'aggregator';
+            redirectPath = '/aggregator';
+          }
+          else if (recyclerData.WMSCATEGORY === 'Primary') {
+            role = 'recycler';
+            redirectPath = '/recycler';
+          }
+          // If just a general recycler
+          else if (recyclerData.firstName) {
+            role = 'recycler';
+            redirectPath = '/recycler';
           }
         }
-        
-        // Check if user has access to sustainability dashboard
-        const allowedRoles = ['sustainability_team', 'super_admin', 'government', 'ngo'];
-        if (!role || !allowedRoles.includes(role)) {
-          router.push('/unauthorized');
-          return;
-        }
-        
-        setUserName(name);
-        loadWasteData();
-        
-      } catch (error) {
-        console.error('Error checking auth:', error);
-        router.push('/login');
       }
-    });
-
-    return () => unsubscribe();
-  }, [router, loadWasteData]);
-
-  useEffect(() => {
-    checkAuthAndLoadData();
-  }, [checkAuthAndLoadData]);
-
-  const getFilteredData = () => {
-    if (selectedCategory === 'all') return wasteRequests;
-    return wasteRequests.filter(req => {
-      const category = req.waste_category || req.category || 'General';
-      return category === selectedCategory;
-    });
+      
+      // 3. Check in Clients node
+      if (!role) {
+        const clientsSnapshot = await get(ref(db, 'Clients'));
+        const allClients = clientsSnapshot.val() as Record<string, ClientData> | null;
+        
+        if (allClients) {
+          for (const [clientUid, clientData] of Object.entries(allClients)) {
+            if (clientData.email === email) {
+              role = 'client';
+              redirectPath = '/client-dashboard';
+              console.log('Client found with UID:', clientUid);
+              break;
+            }
+          }
+        }
+      }
+      
+      console.log('User role determined:', role);
+      console.log('Redirecting to:', redirectPath);
+      
+      if (!role) {
+        setError('User role not found. Please contact support.');
+        console.error('No role found for uid:', uid);
+        await auth.signOut();
+        return;
+      }
+      
+      router.push(redirectPath);
+      
+    } catch (err: unknown) {
+      console.error("Login failed:", err);
+      
+      // Handle specific Firebase auth errors
+      const error = err as { code?: string; message?: string };
+      if (error.code === 'auth/user-not-found') {
+        setError('No account found with this email.');
+      } else if (error.code === 'auth/wrong-password') {
+        setError('Incorrect password. Please try again.');
+      } else if (error.code === 'auth/invalid-email') {
+        setError('Invalid email format.');
+      } else if (error.code === 'auth/too-many-requests') {
+        setError('Too many failed attempts. Please try again later.');
+      } else {
+        setError(error.message || "Login failed. Please check your credentials.");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const filteredData = getFilteredData();
-  const totalFilteredWeight = filteredData.reduce((sum, req) => sum + (req.weight_kg || 0), 0);
-
-  if (loading) {
-    return (
-      <div className={styles.loadingContainer}>
-        <div className={styles.spinner}></div>
-        <p>Loading sustainability dashboard...</p>
-      </div>
-    );
-  }
-
+  const goToSignup = () => {
+    router.push('/signup');
+  };
+  
   return (
-    <div className={styles.container}>
-      {/* Header */}
-      <div className={styles.header}>
-        <div>
-          <h1>🌱 Sustainability Dashboard</h1>
-          <p>Track environmental impact and sustainability metrics</p>
-        </div>
-        <div className={styles.headerInfo}>
-          <span className={styles.welcomeBadge}>Welcome, {userName}</span>
-          <div className={styles.dateBadge}>
-            {new Date().toLocaleDateString(undefined, { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
+    <div className={styles.pageContainer}>
+      <div className={styles.card}>
+        <div className={styles.formSection}>
+          <div className={styles.heading}>
+            <span className={styles.icon}>♻️</span>
+            <h2>GreenGoHub</h2>
+            <p>Please enter your details to login.</p>
           </div>
-        </div>
-      </div>
 
-      {/* Main Impact Metrics Cards */}
-      <div className={styles.impactGrid}>
-        <div className={styles.impactCard}>
-          <div className={styles.impactIcon}>🗑️➡️♻️</div>
-          <div className={styles.impactValue}>{(metrics.wasteDivertedLandfill / 1000).toFixed(2)} tonnes</div>
-          <div className={styles.impactLabel}>Waste Diverted from Landfill</div>
-          <div className={styles.impactSubtext}>Total recyclables collected</div>
-        </div>
-        
-        <div className={styles.impactCard}>
-          <div className={styles.impactIcon}>🌍</div>
-          <div className={styles.impactValue}>{metrics.carbonEmissionReduction.toFixed(2)} tonnes</div>
-          <div className={styles.impactLabel}>CO₂ Equivalent Avoided</div>
-          <div className={styles.impactSubtext}>Carbon emission reduction</div>
-        </div>
-        
-        <div className={styles.impactCard}>
-          <div className={styles.impactIcon}>🥤</div>
-          <div className={styles.impactValue}>{(metrics.plasticRecycled / 1000).toFixed(2)} tonnes</div>
-          <div className={styles.impactLabel}>Plastic Recycled</div>
-          <div className={styles.impactSubtext}>Single-use plastic equivalent</div>
-        </div>
-        
-        <div className={styles.impactCard}>
-          <div className={styles.impactIcon}>📊</div>
-          <div className={styles.impactValue}>{metrics.wasteRecoveryRate.toFixed(1)}%</div>
-          <div className={styles.impactLabel}>Waste Recovery Rate</div>
-          <div className={styles.impactSubtext}>Of total waste collected</div>
-        </div>
-      </div>
+          {error && <div className={styles.errorMessage}>{error}</div>}
 
-      {/* Secondary Environmental Metrics */}
-      <div className={styles.secondaryGrid}>
-        <div className={styles.metricCard}>
-          <div className={styles.metricIcon}>💧</div>
-          <div className={styles.metricValue}>{metrics.waterSaved.toLocaleString()} gallons</div>
-          <div className={styles.metricLabel}>Water Saved</div>
-        </div>
-        <div className={styles.metricCard}>
-          <div className={styles.metricIcon}>⚡</div>
-          <div className={styles.metricValue}>{metrics.energySaved.toLocaleString()} MJ</div>
-          <div className={styles.metricLabel}>Energy Saved</div>
-        </div>
-        <div className={styles.metricCard}>
-          <div className={styles.metricIcon}>🌳</div>
-          <div className={styles.metricValue}>{metrics.treesSaved.toLocaleString()}</div>
-          <div className={styles.metricLabel}>Trees Saved</div>
-        </div>
-        <div className={styles.metricCard}>
-          <div className={styles.metricIcon}>🏭</div>
-          <div className={styles.metricValue}>{Math.round(metrics.co2EquivalentAvoided * 2.5)} cars</div>
-          <div className={styles.metricLabel}>Cars off the road/year</div>
-        </div>
-      </div>
+          <form onSubmit={handleLogin} className={styles.form}>
+            <input
+              type="email"
+              placeholder="Email"
+              required
+              onChange={(e) => setEmail(e.target.value)}
+              className={styles.input}
+              disabled={loading}
+              value={email}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              required
+              onChange={(e) => setPassword(e.target.value)}
+              className={styles.input}
+              disabled={loading}
+              value={password}
+            />
 
-      {/* Recycling Rates by Category */}
-      <div className={styles.sectionCard}>
-        <h2>📊 Recycling Rates by Category</h2>
-        <div className={styles.categoryGrid}>
-          {Object.entries(metrics.recyclingRates).map(([category, rate]) => (
-            <div key={category} className={styles.categoryCard}>
-              <div className={styles.categoryHeader}>
-                <span className={styles.categoryIcon}>
-                  {category === 'Plastic' && '🥤'}
-                  {category === 'PET' && '🥤'}
-                  {category === 'Glass' && '🍾'}
-                  {category === 'Organic' && '🍎'}
-                  {category === 'Metal' && '🔩'}
-                  {category === 'Paper' && '📄'}
-                  {category === 'General' && '🗑️'}
-                </span>
-                <span className={styles.categoryName}>{category}</span>
-              </div>
-              <div className={styles.rateBar}>
-                <div 
-                  className={styles.rateFill}
-                  style={{ width: `${rate}%` }}
-                />
-              </div>
-              <div className={styles.rateValue}>{rate.toFixed(1)}%</div>
+            <div className={styles.options}>
+              <label>
+                <input type="checkbox" /> Remember me
+              </label>
+              <a href="#">Forgot password?</a>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* Monthly Trends Chart */}
-      <div className={styles.sectionCard}>
-        <div className={styles.sectionHeader}>
-          <h2>📈 Monthly Environmental Impact Trends</h2>
-          <div className={styles.trendControls}>
-            <button 
-              className={`${styles.trendBtn} ${selectedPeriod === 'weekly' ? styles.active : ''}`}
-              onClick={() => setSelectedPeriod('weekly')}
-            >
-              Weekly
+            <button type="submit" className={styles.loginButton} disabled={loading}>
+              {loading ? 'Logging in...' : 'Login'}
             </button>
-            <button 
-              className={`${styles.trendBtn} ${selectedPeriod === 'monthly' ? styles.active : ''}`}
-              onClick={() => setSelectedPeriod('monthly')}
-            >
-              Monthly
-            </button>
-            <button 
-              className={`${styles.trendBtn} ${selectedPeriod === 'yearly' ? styles.active : ''}`}
-              onClick={() => setSelectedPeriod('yearly')}
-            >
-              Yearly
-            </button>
-          </div>
-        </div>
-        
-        <div className={styles.chartContainer}>
-          <div className={styles.chartLegend}>
-            <span className={styles.legendItem}>
-              <span className={styles.legendColor} style={{ backgroundColor: '#4CAF50' }}></span>
-              Waste Collected (kg)
-            </span>
-            <span className={styles.legendItem}>
-              <span className={styles.legendColor} style={{ backgroundColor: '#2196F3' }}></span>
-              CO₂ Saved (tonnes)
-            </span>
-            <span className={styles.legendItem}>
-              <span className={styles.legendColor} style={{ backgroundColor: '#FF9800' }}></span>
-              Plastic Recycled (kg)
-            </span>
-          </div>
-          
-          <div className={styles.barChart}>
-            {monthlyTrends.map((trend, index) => {
-              const maxWeight = Math.max(...monthlyTrends.map(t => t.weight), 1);
-              const maxCo2 = Math.max(...monthlyTrends.map(t => t.co2Saved), 1);
-              const maxPlastic = Math.max(...monthlyTrends.map(t => t.plasticRecycled), 1);
-              
-              return (
-                <div key={index} className={styles.chartBar}>
-                  <div className={styles.barLabels}>
-                    <span className={styles.monthLabel}>{trend.month}</span>
-                  </div>
-                  <div className={styles.barsContainer}>
-                    <div 
-                      className={styles.barWeight}
-                      style={{ height: `${Math.min(100, (trend.weight / maxWeight) * 100)}px` }}
-                      title={`Waste: ${trend.weight.toLocaleString()} kg`}
-                    />
-                    <div 
-                      className={styles.barCO2}
-                      style={{ height: `${Math.min(100, (trend.co2Saved / maxCo2) * 100)}px` }}
-                      title={`CO₂: ${trend.co2Saved.toFixed(2)} tonnes`}
-                    />
-                    <div 
-                      className={styles.barPlastic}
-                      style={{ height: `${Math.min(100, (trend.plasticRecycled / maxPlastic) * 100)}px` }}
-                      title={`Plastic: ${trend.plasticRecycled.toLocaleString()} kg`}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+            
+            <div className={styles.newuser} onClick={goToSignup}>
+              New User? Sign Up
+            </div>
+            
+            <div className={styles.or}>or</div>
 
-      {/* SDG Goals Alignment */}
-      <div className={styles.sectionCard}>
-        <h2>🎯 SDG Goals Alignment</h2>
-        <div className={styles.sdgGrid}>
-          <div className={styles.sdgCard}>
-            <div className={styles.sdgIcon}>🎯</div>
-            <div className={styles.sdgNumber}>SDG 12</div>
-            <div className={styles.sdgTitle}>Responsible Consumption &amp; Production</div>
-            <div className={styles.sdgProgress}>
-              <div className={styles.sdgProgressBar} style={{ width: `${Math.min(100, (metrics.wasteRecoveryRate / 100) * 100)}%` }} />
+            <div className={styles.socialButtons}>
+              <button type="button" className={styles.apple}></button>
+              <button type="button" className={styles.social}>
+                G
+              </button>
+              <button type="button" className={styles.social}>
+                f
+              </button>
             </div>
-            <div className={styles.sdgValue}>{metrics.wasteRecoveryRate.toFixed(1)}% waste recovery</div>
-          </div>
-          
-          <div className={styles.sdgCard}>
-            <div className={styles.sdgIcon}>🌍</div>
-            <div className={styles.sdgNumber}>SDG 13</div>
-            <div className={styles.sdgTitle}>Climate Action</div>
-            <div className={styles.sdgProgress}>
-              <div className={styles.sdgProgressBar} style={{ width: `${Math.min(100, (metrics.carbonEmissionReduction / 1000) * 100)}%` }} />
-            </div>
-            <div className={styles.sdgValue}>{metrics.carbonEmissionReduction.toFixed(2)} tonnes CO₂ saved</div>
-          </div>
-          
-          <div className={styles.sdgCard}>
-            <div className={styles.sdgIcon}>🐟</div>
-            <div className={styles.sdgNumber}>SDG 14</div>
-            <div className={styles.sdgTitle}>Life Below Water</div>
-            <div className={styles.sdgProgress}>
-              <div className={styles.sdgProgressBar} style={{ width: `${Math.min(100, (metrics.plasticRecycled / 10000) * 100)}%` }} />
-            </div>
-            <div className={styles.sdgValue}>{(metrics.plasticRecycled / 1000).toFixed(2)} tonnes plastic recycled</div>
-          </div>
-          
-          <div className={styles.sdgCard}>
-            <div className={styles.sdgIcon}>🌳</div>
-            <div className={styles.sdgNumber}>SDG 15</div>
-            <div className={styles.sdgTitle}>Life on Land</div>
-            <div className={styles.sdgProgress}>
-              <div className={styles.sdgProgressBar} style={{ width: `${Math.min(100, (metrics.treesSaved / 1000) * 100)}%` }} />
-            </div>
-            <div className={styles.sdgValue}>{metrics.treesSaved.toLocaleString()} trees saved</div>
-          </div>
+          </form>
         </div>
-      </div>
 
-      {/* Recent Collection Data */}
-      <div className={styles.sectionCard}>
-        <div className={styles.sectionHeader}>
-          <h2>📋 Recent Waste Collections</h2>
-          <div className={styles.filterGroup}>
-            <select 
-              className={styles.categoryFilter}
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-            >
-              <option value="all">All Categories</option>
-              <option value="Plastic">Plastic</option>
-              <option value="PET">PET</option>
-              <option value="Glass">Glass</option>
-              <option value="Organic">Organic</option>
-              <option value="Metal">Metal</option>
-              <option value="Paper">Paper</option>
-              <option value="General">General</option>
-            </select>
-          </div>
-        </div>
-        
-        <div className={styles.statsSummary}>
-          <div className={styles.summaryItem}>
-            <span className={styles.summaryLabel}>Total Weight:</span>
-            <span className={styles.summaryValue}>{totalFilteredWeight.toLocaleString()} kg</span>
-          </div>
-          <div className={styles.summaryItem}>
-            <span className={styles.summaryLabel}>Total Items:</span>
-            <span className={styles.summaryValue}>{filteredData.length}</span>
-          </div>
-          <div className={styles.summaryItem}>
-            <span className={styles.summaryLabel}>Avg Weight/Item:</span>
-            <span className={styles.summaryValue}>
-              {filteredData.length > 0 ? (totalFilteredWeight / filteredData.length).toFixed(1) : 0} kg
-            </span>
-          </div>
-        </div>
-        
-        <div className={styles.tableWrapper}>
-          <table className={styles.dataTable}>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Client</th>
-                <th>Category</th>
-                <th>Grade</th>
-                <th>Weight (kg)</th>
-                <th>CO₂ Saved (kg)</th>
-                <th>Collector</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.slice(0, 20).map((request) => {
-                const weight = request.weight_kg || 0;
-                const co2Saved = (weight / 1000) * 1500;
-                return (
-                  <tr key={request.id}>
-                    <td>{request.created_at ? new Date(request.created_at).toLocaleDateString() : 'N/A'}</td>
-                    <td>{request.client_name || 'Unknown'}</td>
-                    <td>
-                      <span className={styles.categoryTag}>
-                        {request.waste_category || request.category || 'General'}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`${styles.gradeTag} ${styles[`grade${request.waste_grade || 'G2'}`]}`}>
-                        {request.waste_grade || 'G2'}
-                      </span>
-                    </td>
-                    <td className={styles.numberCell}>{weight.toLocaleString()}</td>
-                    <td className={styles.numberCell}>{co2Saved.toFixed(1)}</td>
-                    <td>{request.WMS_name || 'N/A'}</td>
-                  </tr>
-                );
-              })}
-              {filteredData.length === 0 && (
-                <tr>
-                  <td colSpan={7} className={styles.emptyTable}>
-                    No collection data available
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Environmental Impact Summary */}
-      <div className={styles.summarySection}>
-        <h2>🌿 Environmental Impact Summary</h2>
-        <div className={styles.summaryGrid}>
-          <div className={styles.summaryCard}>
-            <div className={styles.summaryIcon}>🏭</div>
-            <div className={styles.summaryText}>
-              <div className={styles.summaryTitle}>Carbon Footprint Reduction</div>
-              <div className={styles.summaryDescription}>
-                Equivalent to removing <strong>{Math.round(metrics.carbonEmissionReduction * 2.5)} cars</strong> from the road for one year
-              </div>
-            </div>
-          </div>
-          
-          <div className={styles.summaryCard}>
-            <div className={styles.summaryIcon}>💧</div>
-            <div className={styles.summaryText}>
-              <div className={styles.summaryTitle}>Water Conservation</div>
-              <div className={styles.summaryDescription}>
-                Saved enough water to fill <strong>{Math.round(metrics.waterSaved / 10000)} Olympic swimming pools</strong>
-              </div>
-            </div>
-          </div>
-          
-          <div className={styles.summaryCard}>
-            <div className={styles.summaryIcon}>⚡</div>
-            <div className={styles.summaryText}>
-              <div className={styles.summaryTitle}>Energy Conservation</div>
-              <div className={styles.summaryDescription}>
-                Saved enough energy to power <strong>{Math.round(metrics.energySaved / 3650)} homes</strong> for one year
-              </div>
-            </div>
-          </div>
-          
-          <div className={styles.summaryCard}>
-            <div className={styles.summaryIcon}>🌳</div>
-            <div className={styles.summaryText}>
-              <div className={styles.summaryTitle}>Forest Conservation</div>
-              <div className={styles.summaryDescription}>
-                Saved the equivalent of <strong>{metrics.treesSaved.toLocaleString()} trees</strong> from being cut down
-              </div>
-            </div>
+        <div className={styles.imageSection}>
+          <div className={styles.placeholderImage}>
+            <span>♻️</span>
+            <p>GreenGo-Hub</p>
+            <small>Waste Management Platform</small>
           </div>
         </div>
       </div>
