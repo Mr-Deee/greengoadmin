@@ -25,12 +25,6 @@
     margin-bottom: 0.5rem;
   }
   
-  .header h1 span {
-    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  
   .header p {
     color: #7f8c8d;
     font-size: 0.9rem;
@@ -43,12 +37,6 @@
     color: white;
     font-size: 0.9rem;
     font-weight: 500;
-  }
-  
-  .operatorName {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
   }
   
   /* Loading State */
@@ -132,14 +120,6 @@
     font-size: 1.25rem;
     color: #2c3e50;
     margin-bottom: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  
-  .tasksSection h2::before {
-    content: "📋";
-    font-size: 1.25rem;
   }
   
   /* Empty State */
@@ -223,11 +203,21 @@
   .taskStatus.in-progress {
     background: #e3f2fd;
     color: #2196F3;
+    animation: pulse 2s ease-in-out infinite;
   }
   
   .taskStatus.completed {
     background: #d5f4e6;
     color: #27ae60;
+  }
+  
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
   }
   
   /* Task Details */
@@ -283,17 +273,9 @@
     color: white;
   }
   
-  .startBtn:hover {
-    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
-  }
-  
   .completeBtn {
     background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
     color: white;
-  }
-  
-  .completeBtn:hover {
-    box-shadow: 0 2px 8px rgba(39, 174, 96, 0.4);
   }
   
   .mapBtn {
@@ -301,17 +283,9 @@
     color: white;
   }
   
-  .mapBtn:hover {
-    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.4);
-  }
-  
   .locationBtn {
     background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
     color: white;
-  }
-  
-  .locationBtn:hover {
-    box-shadow: 0 2px 8px rgba(156, 39, 176, 0.4);
   }
   
   /* Map Modal */
@@ -479,21 +453,6 @@
       display: block;
       width: 100%;
     }
-  }
-  
-
-  /* Status Badge Animations */
-  @keyframes pulse {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.7;
-    }
-  }
-  
-  .taskStatus.in-progress {
-    animation: pulse 2s ease-in-out infinite;
   }
   
   /* Print Styles */
