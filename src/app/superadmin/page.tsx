@@ -1,15 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { ref, get, onValue } from 'firebase/database';
 import styles from './superadmin.module.css';
 
+interface StatsData {
+  totalUsers: number;
+  activeRecyclers: number;
+  totalWasteKg: number;
+  totalRevenue: number;
+  pendingRequests: number;
+  completedRequests: number;
+}
+
+interface ClientRequest {
+  status?: string;
+  weight_kg?: number;
+  weight?: string;
+  calculated_price?: number;
+}
+
+interface RecyclerData {
+  detailsComp?: boolean;
+}
+
 export default function SuperAdminPage() {
   const { user, loading } = useAuth('super_admin');
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<StatsData>({
     totalUsers: 0,
     activeRecyclers: 0,
     totalWasteKg: 0,
@@ -19,18 +39,10 @@ export default function SuperAdminPage() {
   });
   const [statsLoading, setStatsLoading] = useState(true);
 
-  useEffect(() => {
-    if (!loading && user) {
-      fetchAllStats();
-    }
-  }, [loading, user]);
-
-  const fetchAllStats = async () => {
+  const fetchAllStats = useCallback(async () => {
     setStatsLoading(true);
     
     try {
-      // Fetch counts from different database nodes
-      
       // 1. Total Users (from Clients node)
       const clientsRef = ref(db, 'Clients');
       const clientsSnapshot = await get(clientsRef);
@@ -42,9 +54,9 @@ export default function SuperAdminPage() {
       let activeRecyclers = 0;
       let totalRecyclers = 0;
       if (recyclersSnapshot.exists()) {
-        const recyclers = recyclersSnapshot.val();
+        const recyclers = recyclersSnapshot.val() as Record<string, RecyclerData>;
         totalRecyclers = Object.keys(recyclers).length;
-        activeRecyclers = Object.values(recyclers).filter((r: any) => r.detailsComp === true).length;
+        activeRecyclers = Object.values(recyclers).filter(r => r.detailsComp === true).length;
       }
       
       // 3. Total Waste Collected and Revenue from ClientRequest node (ended status)
@@ -56,8 +68,8 @@ export default function SuperAdminPage() {
       let pendingRequests = 0;
       
       if (requestsSnapshot.exists()) {
-        const requests = requestsSnapshot.val();
-        Object.values(requests).forEach((request: any) => {
+        const requests = requestsSnapshot.val() as Record<string, ClientRequest>;
+        Object.values(requests).forEach((request) => {
           if (request.status === 'ended') {
             completedRequests++;
             // Add weight if available
@@ -95,27 +107,33 @@ export default function SuperAdminPage() {
     } finally {
       setStatsLoading(false);
     }
-  };
+  }, [db]);
+
+  useEffect(() => {
+    if (!loading && user) {
+      fetchAllStats();
+    }
+  }, [loading, user, fetchAllStats]);
 
   // Set up real-time listeners for live updates
   useEffect(() => {
     if (!loading && user) {
       // Listen for real-time updates to ClientRequest
       const requestsRef = ref(db, 'ClientRequest');
-      const unsubscribeRequests = onValue(requestsRef, async () => {
-        await fetchAllStats();
+      const unsubscribeRequests = onValue(requestsRef, () => {
+        fetchAllStats();
       });
       
       // Listen for real-time updates to Recyclers
       const recyclersRef = ref(db, 'Recyclers');
-      const unsubscribeRecyclers = onValue(recyclersRef, async () => {
-        await fetchAllStats();
+      const unsubscribeRecyclers = onValue(recyclersRef, () => {
+        fetchAllStats();
       });
       
       // Listen for real-time updates to Clients
       const clientsRef = ref(db, 'Clients');
-      const unsubscribeClients = onValue(clientsRef, async () => {
-        await fetchAllStats();
+      const unsubscribeClients = onValue(clientsRef, () => {
+        fetchAllStats();
       });
       
       return () => {
@@ -124,7 +142,7 @@ export default function SuperAdminPage() {
         unsubscribeClients();
       };
     }
-  }, [loading, user]);
+  }, [loading, user, fetchAllStats, db]);
   
   const menuItems = [
     { title: 'User Management', icon: '👥', href: '/superadmin/users', description: 'Create and manage all platform users', color: '#667eea' },
