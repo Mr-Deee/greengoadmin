@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { ref, onValue, get, push, set } from 'firebase/database';
 import { useRouter } from 'next/navigation';
-import styles from'./civilsociety.module.css'
+import styles from './civilsociety.module.css';
+
 interface WasteRequest {
   id: string;
   client_name?: string;
@@ -45,11 +46,21 @@ interface TransparencyReport {
   plasticRecycled: number;
 }
 
+interface AdminData {
+  role?: string;
+  name?: string;
+}
+
+interface CivilData {
+  role?: string;
+  name?: string;
+  firstName?: string;
+}
+
 export default function CivilSocietyPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
-  const [wasteRequests, setWasteRequests] = useState<WasteRequest[]>([]);
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackForm, setFeedbackForm] = useState({
@@ -67,14 +78,9 @@ export default function CivilSocietyPage() {
     co2Reduction: 0,
     plasticRecycled: 0
   });
-  const [selectedPeriod, setSelectedPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [showReportModal, setShowReportModal] = useState(false);
 
-  useEffect(() => {
-    checkAuthAndLoadData();
-  }, []);
-
-  const checkAuthAndLoadData = async () => {
+  const checkAuthAndLoadData = useCallback(async () => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (!user) {
         router.push('/login');
@@ -85,7 +91,7 @@ export default function CivilSocietyPage() {
         // Check in Admin node first
         const adminRef = ref(db, `Admin/${user.uid}`);
         const adminSnapshot = await get(adminRef);
-        const adminData = adminSnapshot.val();
+        const adminData = adminSnapshot.val() as AdminData | null;
         
         let role = adminData?.role;
         let name = adminData?.name || user.email?.split('@')[0] || 'User';
@@ -94,7 +100,7 @@ export default function CivilSocietyPage() {
         if (!role) {
           const civilRef = ref(db, `CivilSociety/${user.uid}`);
           const civilSnapshot = await get(civilRef);
-          const civilData = civilSnapshot.val();
+          const civilData = civilSnapshot.val() as CivilData | null;
           
           if (civilData) {
             role = civilData.role || 'civil_society';
@@ -120,7 +126,11 @@ export default function CivilSocietyPage() {
     });
 
     return () => unsubscribe();
-  };
+  }, [router, db]);
+
+  useEffect(() => {
+    checkAuthAndLoadData();
+  }, [checkAuthAndLoadData]);
 
   const loadWasteData = () => {
     const requestsRef = ref(db, 'ClientRequest');
@@ -132,8 +142,6 @@ export default function CivilSocietyPage() {
           id: key,
           ...data[key]
         })) as WasteRequest[];
-        
-        setWasteRequests(requestsArray);
         
         // Calculate transparency report
         const completedRequests = requestsArray.filter(req => req.status === 'ended');
@@ -161,7 +169,7 @@ export default function CivilSocietyPage() {
         setTransparencyReport({
           totalWasteCollected: totalWeight,
           totalRevenue: totalRevenue,
-          activeRecyclers: 0, // Will be updated from Recyclers node
+          activeRecyclers: 0,
           completedRequests: completedRequests.length,
           pendingRequests: pendingRequests.length,
           wasteByCategory,
@@ -226,6 +234,13 @@ export default function CivilSocietyPage() {
       console.error('Error submitting feedback:', error);
       alert('Failed to submit feedback. Please try again.');
     }
+  };
+
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFeedbackForm({
+      ...feedbackForm,
+      category: e.target.value as 'complaint' | 'suggestion' | 'praise' | 'inquiry'
+    });
   };
 
   const getStatusCounts = () => {
@@ -522,7 +537,7 @@ export default function CivilSocietyPage() {
                 <select
                   required
                   value={feedbackForm.category}
-                  onChange={(e) => setFeedbackForm({...feedbackForm, category: e.target.value as any})}
+                  onChange={handleCategoryChange}
                 >
                   <option value="suggestion">💡 Suggestion</option>
                   <option value="complaint">⚠️ Complaint</option>

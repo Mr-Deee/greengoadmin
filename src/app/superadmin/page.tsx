@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import { ref, get, onValue } from 'firebase/database';
+import { ref, onValue } from 'firebase/database';
 import styles from './superadmin.module.css';
 
 interface StatsData {
@@ -45,12 +45,12 @@ export default function SuperAdminPage() {
     try {
       // 1. Total Users (from Clients node)
       const clientsRef = ref(db, 'Clients');
-      const clientsSnapshot = await get(clientsRef);
-      const totalClients = clientsSnapshot.exists() ? Object.keys(clientsSnapshot.val()).length : 0;
+      const clientsSnapshot = await (await import('firebase/database')).get(clientsRef);
+      const totalClients = clientsSnapshot.exists() ? Object.keys(clientsSnapshot.val() as Record<string, unknown>).length : 0;
       
       // 2. Active Recyclers (from Recyclers node where detailsComp is true)
       const recyclersRef = ref(db, 'Recyclers');
-      const recyclersSnapshot = await get(recyclersRef);
+      const recyclersSnapshot = await (await import('firebase/database')).get(recyclersRef);
       let activeRecyclers = 0;
       let totalRecyclers = 0;
       if (recyclersSnapshot.exists()) {
@@ -61,7 +61,7 @@ export default function SuperAdminPage() {
       
       // 3. Total Waste Collected and Revenue from ClientRequest node (ended status)
       const requestsRef = ref(db, 'ClientRequest');
-      const requestsSnapshot = await get(requestsRef);
+      const requestsSnapshot = await (await import('firebase/database')).get(requestsRef);
       let totalWasteKg = 0;
       let totalRevenue = 0;
       let completedRequests = 0;
@@ -90,8 +90,8 @@ export default function SuperAdminPage() {
       
       // 4. Also include Admin users (if any)
       const adminRef = ref(db, 'Admin');
-      const adminSnapshot = await get(adminRef);
-      const totalAdmins = adminSnapshot.exists() ? Object.keys(adminSnapshot.val()).length : 0;
+      const adminSnapshot = await (await import('firebase/database')).get(adminRef);
+      const totalAdmins = adminSnapshot.exists() ? Object.keys(adminSnapshot.val() as Record<string, unknown>).length : 0;
       
       setStats({
         totalUsers: totalClients + totalRecyclers + totalAdmins,
@@ -107,7 +107,7 @@ export default function SuperAdminPage() {
     } finally {
       setStatsLoading(false);
     }
-  }, [db]);
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {
@@ -142,7 +142,7 @@ export default function SuperAdminPage() {
         unsubscribeClients();
       };
     }
-  }, [loading, user, fetchAllStats, db]);
+  }, [loading, user, fetchAllStats]);
   
   const menuItems = [
     { title: 'User Management', icon: '👥', href: '/superadmin/users', description: 'Create and manage all platform users', color: '#667eea' },

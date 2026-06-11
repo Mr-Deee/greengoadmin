@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { ref, onValue, update, push, set, get } from 'firebase/database';
 import { signOut } from 'firebase/auth';
@@ -77,7 +77,6 @@ export default function RecyclerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
-  const [userRole, setUserRole] = useState('');
   const [recyclerId, setRecyclerId] = useState<string | null>(null);
   const [wasteRequests, setWasteRequests] = useState<WasteRequest[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -97,11 +96,7 @@ export default function RecyclerPage() {
     pendingRequests: 0
   });
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       console.log('Auth state changed:', user?.uid);
       
@@ -122,7 +117,6 @@ export default function RecyclerPage() {
         if (userData) {
           console.log('Recycler data found:', userData);
           setUserName(userData.firstName || userData.name || user.email?.split('@')[0] || 'Recycler');
-          setUserRole(userData.role || 'recycler');
           setLoading(false);
           
           // Fetch data for this recycler
@@ -141,11 +135,8 @@ export default function RecyclerPage() {
         if (adminData && adminData.role === 'super_admin') {
           console.log('Super admin found:', adminData);
           setUserName(adminData.email?.split('@')[0] || 'Super Admin');
-          setUserRole('super_admin');
           setLoading(false);
           fetchAllWasteRequests();
-          // For super admin, inventory/processing/sales might be from a different path
-          // Or just show empty states
           return;
         }
         
@@ -162,7 +153,11 @@ export default function RecyclerPage() {
     });
 
     return () => unsubscribe();
-  };
+  }, [router, db]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   const handleLogout = async () => {
     try {
@@ -557,7 +552,7 @@ export default function RecyclerPage() {
             <div className={styles.confirmBody}>
               <div className={styles.confirmIcon}>👋</div>
               <p className={styles.confirmText}>Are you sure you want to logout?</p>
-              <p className={styles.confirmSubtext}>You'll need to login again to access your dashboard.</p>
+              <p className={styles.confirmSubtext}>You&apos;ll need to login again to access your dashboard.</p>
             </div>
             <div className={styles.formActions}>
               <button 
@@ -588,7 +583,7 @@ export default function RecyclerPage() {
           <div className={styles.statInfo}>
             <div className={styles.statValue}>{stats.totalReceived.toLocaleString()} kg</div>
             <div className={styles.statLabel}>Total Received</div>
-            <div className={styles.statTrend}>Waste you've collected</div>
+            <div className={styles.statTrend}>Waste you&apos;ve collected</div>
           </div>
         </div>
         <div className={`${styles.statCard} ${styles.statCardProcess}`}>
@@ -598,7 +593,7 @@ export default function RecyclerPage() {
           <div className={styles.statInfo}>
             <div className={styles.statValue}>{stats.totalProcessed.toLocaleString()} kg</div>
             <div className={styles.statLabel}>Processed Material</div>
-            <div className={styles.statTrend}>Materials you've processed</div>
+            <div className={styles.statTrend}>Materials you&apos;ve processed</div>
           </div>
         </div>
         <div className={`${styles.statCard} ${styles.statCardSales}`}>
@@ -677,7 +672,7 @@ export default function RecyclerPage() {
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}>📭</div>
               <h3 className={styles.emptyTitle}>No pending waste</h3>
-              <p className={styles.emptyText}>You don't have any waste assignments at the moment.</p>
+              <p className={styles.emptyText}>You don&apos;t have any waste assignments at the moment.</p>
             </div>
           ) : (
             <div className={styles.requestsGrid}>

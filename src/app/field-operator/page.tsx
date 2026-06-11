@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { ref, query, orderByChild, equalTo, onValue, update, push, set } from 'firebase/database';
+import { ref, onValue, update, push, set } from 'firebase/database';
 import styles from './field-operator.module.css';
 
 interface CollectionTask {
@@ -243,7 +243,7 @@ export default function FieldOperatorPage() {
 
       {/* Tasks List */}
       <div className={styles.tasksSection}>
-        <h2>Today's Collection Tasks</h2>
+        <h2>Today&apos;s Collection Tasks</h2>
         {tasks.length === 0 ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>📭</div>
