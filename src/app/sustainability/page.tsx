@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { ref, onValue, get } from 'firebase/database';
+import { ref, onValue } from 'firebase/database';
 import { useRouter } from 'next/navigation';
 import styles from './sustainability.module.css';
 
@@ -60,11 +60,7 @@ export default function SustainabilityPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  useEffect(() => {
-    checkAuthAndLoadData();
-  }, []);
-
-  const checkAuthAndLoadData = async () => {
+  const checkAuthAndLoadData = useCallback(async () => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (!user) {
         router.push('/login');
@@ -74,7 +70,7 @@ export default function SustainabilityPage() {
       try {
         // Check in Admin node first
         const adminRef = ref(db, `Admin/${user.uid}`);
-        const adminSnapshot = await get(adminRef);
+        const adminSnapshot = await (await import('firebase/database')).get(adminRef);
         const adminData = adminSnapshot.val();
         
         let role = adminData?.role;
@@ -83,7 +79,7 @@ export default function SustainabilityPage() {
         // If not admin, check in Sustainability node
         if (!role) {
           const sustainabilityRef = ref(db, `Sustainability/${user.uid}`);
-          const sustainabilitySnapshot = await get(sustainabilityRef);
+          const sustainabilitySnapshot = await (await import('firebase/database')).get(sustainabilityRef);
           const sustainabilityData = sustainabilitySnapshot.val();
           
           if (sustainabilityData) {
@@ -109,7 +105,11 @@ export default function SustainabilityPage() {
     });
 
     return () => unsubscribe();
-  };
+  }, [router]);
+
+  useEffect(() => {
+    checkAuthAndLoadData();
+  }, [checkAuthAndLoadData]);
 
   const loadWasteData = () => {
     const requestsRef = ref(db, 'ClientRequest');
@@ -389,30 +389,36 @@ export default function SustainabilityPage() {
           </div>
           
           <div className={styles.barChart}>
-            {monthlyTrends.map((trend, index) => (
-              <div key={index} className={styles.chartBar}>
-                <div className={styles.barLabels}>
-                  <span className={styles.monthLabel}>{trend.month}</span>
+            {monthlyTrends.map((trend, index) => {
+              const maxWeight = Math.max(...monthlyTrends.map(t => t.weight), 1);
+              const maxCo2 = Math.max(...monthlyTrends.map(t => t.co2Saved), 1);
+              const maxPlastic = Math.max(...monthlyTrends.map(t => t.plasticRecycled), 1);
+              
+              return (
+                <div key={index} className={styles.chartBar}>
+                  <div className={styles.barLabels}>
+                    <span className={styles.monthLabel}>{trend.month}</span>
+                  </div>
+                  <div className={styles.barsContainer}>
+                    <div 
+                      className={styles.barWeight}
+                      style={{ height: `${Math.min(100, (trend.weight / maxWeight) * 100)}px` }}
+                      title={`Waste: ${trend.weight.toLocaleString()} kg`}
+                    />
+                    <div 
+                      className={styles.barCO2}
+                      style={{ height: `${Math.min(100, (trend.co2Saved / maxCo2) * 100)}px` }}
+                      title={`CO₂: ${trend.co2Saved.toFixed(2)} tonnes`}
+                    />
+                    <div 
+                      className={styles.barPlastic}
+                      style={{ height: `${Math.min(100, (trend.plasticRecycled / maxPlastic) * 100)}px` }}
+                      title={`Plastic: ${trend.plasticRecycled.toLocaleString()} kg`}
+                    />
+                  </div>
                 </div>
-                <div className={styles.barsContainer}>
-                  <div 
-                    className={styles.barWeight}
-                    style={{ height: `${Math.min(100, (trend.weight / Math.max(...monthlyTrends.map(t => t.weight), 1)) * 100)}px` }}
-                    title={`Waste: ${trend.weight.toLocaleString()} kg`}
-                  />
-                  <div 
-                    className={styles.barCO2}
-                    style={{ height: `${Math.min(100, (trend.co2Saved / Math.max(...monthlyTrends.map(t => t.co2Saved), 1)) * 100)}px` }}
-                    title={`CO₂: ${trend.co2Saved.toFixed(2)} tonnes`}
-                  />
-                  <div 
-                    className={styles.barPlastic}
-                    style={{ height: `${Math.min(100, (trend.plasticRecycled / Math.max(...monthlyTrends.map(t => t.plasticRecycled), 1)) * 100)}px` }}
-                    title={`Plastic: ${trend.plasticRecycled.toLocaleString()} kg`}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
