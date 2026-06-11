@@ -1,0 +1,595 @@
+/* Container */
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    min-height: 100vh;
+  }
+  
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .header h1 {
+    font-size: 2rem;
+    color: #2e7d32;
+    margin-bottom: 0.5rem;
+  }
+  
+  .header p {
+    color: #66bb6a;
+    font-size: 0.9rem;
+  }
+  
+  .headerInfo {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+  }
+  
+  .welcomeBadge {
+    background: linear-gradient(135deg, #4caf50, #2e7d32);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 2rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  
+  .dateBadge {
+    background: #e8f5e9;
+    color: #2e7d32;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  
+  /* Impact Grid */
+  .impactGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  
+  .impactCard {
+    background: white;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+    border-bottom: 4px solid #4caf50;
+  }
+  
+  .impactCard:hover {
+    transform: translateY(-4px);
+  }
+  
+  .impactIcon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+  
+  .impactValue {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #2e7d32;
+    margin-bottom: 0.5rem;
+  }
+  
+  .impactLabel {
+    font-size: 1rem;
+    color: #333;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+  
+  .impactSubtext {
+    font-size: 0.8rem;
+    color: #666;
+  }
+  
+  /* Secondary Metrics Grid */
+  .secondaryGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  
+  .metricCard {
+    background: white;
+    border-radius: 1rem;
+    padding: 1.25rem;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .metricIcon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .metricValue {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: #2e7d32;
+  }
+  
+  .metricLabel {
+    font-size: 0.85rem;
+    color: #666;
+    margin-top: 0.25rem;
+  }
+  
+  /* Section Card */
+  .sectionCard {
+    background: white;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .sectionCard h2 {
+    font-size: 1.25rem;
+    color: #333;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e0e0e0;
+  }
+  
+  /* Category Grid */
+  .categoryGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+  }
+  
+  .categoryCard {
+    background: #f5f5f5;
+    border-radius: 0.75rem;
+    padding: 1rem;
+  }
+  
+  .categoryHeader {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .categoryIcon {
+    font-size: 1.5rem;
+  }
+  
+  .categoryName {
+    font-weight: 600;
+    color: #333;
+  }
+  
+  .rateBar {
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+  }
+  
+  .rateFill {
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #2e7d32);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+  
+  .rateValue {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #2e7d32;
+    text-align: right;
+  }
+  
+  /* Section Header */
+  .sectionHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  
+  .trendControls {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .trendBtn {
+    padding: 0.5rem 1rem;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .trendBtn.active {
+    background: #4caf50;
+    color: white;
+    border-color: #4caf50;
+  }
+  
+  /* Chart Container */
+  .chartContainer {
+    margin-top: 1rem;
+  }
+  
+  .chartLegend {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  
+  .legendItem {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #666;
+  }
+  
+  .legendColor {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+  }
+  
+  .barChart {
+    display: flex;
+    gap: 1rem;
+    justify-content: space-around;
+    align-items: flex-end;
+    min-height: 200px;
+    padding: 1rem;
+    background: #f9f9f9;
+    border-radius: 0.75rem;
+    overflow-x: auto;
+  }
+  
+  .chartBar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 60px;
+  }
+  
+  .barLabels {
+    text-align: center;
+  }
+  
+  .monthLabel {
+    font-size: 0.75rem;
+    color: #666;
+  }
+  
+  .barsContainer {
+    display: flex;
+    gap: 4px;
+    align-items: flex-end;
+    height: 150px;
+  }
+  
+  .barWeight,
+  .barCO2,
+  .barPlastic {
+    width: 20px;
+    transition: height 0.3s ease;
+    border-radius: 4px 4px 0 0;
+  }
+  
+  .barWeight {
+    background: #4caf50;
+  }
+  
+  .barCO2 {
+    background: #2196f3;
+  }
+  
+  .barPlastic {
+    background: #ff9800;
+  }
+  
+  /* SDG Grid */
+  .sdgGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+  }
+  
+  .sdgCard {
+    background: linear-gradient(135deg, #f5f5f5, #e8f5e9);
+    border-radius: 1rem;
+    padding: 1.25rem;
+    text-align: center;
+  }
+  
+  .sdgIcon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .sdgNumber {
+    font-size: 0.85rem;
+    color: #4caf50;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+  
+  .sdgTitle {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 0.75rem;
+  }
+  
+  .sdgProgress {
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+  }
+  
+  .sdgProgressBar {
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #2e7d32);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+  
+  .sdgValue {
+    font-size: 0.8rem;
+    color: #666;
+  }
+  
+  /* Filter Group */
+  .filterGroup {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .categoryFilter {
+    padding: 0.5rem 1rem;
+    border: 1px solid #ddd;
+    border-radius: 0.5rem;
+    background: white;
+    cursor: pointer;
+  }
+  
+  /* Stats Summary */
+  .statsSummary {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1rem;
+    background: #f5f5f5;
+    border-radius: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  
+  .summaryItem {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .summaryLabel {
+    color: #666;
+  }
+  
+  .summaryValue {
+    font-weight: 600;
+    color: #2e7d32;
+  }
+  
+  /* Table */
+  .tableWrapper {
+    overflow-x: auto;
+  }
+  
+  .dataTable {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .dataTable th {
+    text-align: left;
+    padding: 0.75rem;
+    background: #f5f5f5;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 2px solid #e0e0e0;
+  }
+  
+  .dataTable td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  .dataTable tbody tr:hover {
+    background: #f9f9f9;
+  }
+  
+  .numberCell {
+    text-align: right;
+  }
+  
+  .categoryTag {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+  }
+  
+  .gradeTag {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+  }
+  
+  .gradeTag.gradeG1 {
+    background: #ffebee;
+    color: #c62828;
+  }
+  
+  .gradeTag.gradeG2 {
+    background: #fff3e0;
+    color: #ef6c00;
+  }
+  
+  .gradeTag.gradeG3 {
+    background: #e8f5e9;
+    color: #2e7d32;
+  }
+  
+  .emptyTable {
+    text-align: center;
+    padding: 2rem;
+    color: #999;
+  }
+  
+  /* Summary Section */
+  .summarySection {
+    margin-top: 2rem;
+  }
+  
+  .summarySection h2 {
+    font-size: 1.25rem;
+    color: #333;
+    margin-bottom: 1rem;
+  }
+  
+  .summaryGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+  }
+  
+  .summaryCard {
+    background: white;
+    border-radius: 1rem;
+    padding: 1rem;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .summaryIcon {
+    font-size: 2.5rem;
+  }
+  
+  .summaryText {
+    flex: 1;
+  }
+  
+  .summaryTitle {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 0.25rem;
+  }
+  
+  .summaryDescription {
+    font-size: 0.85rem;
+    color: #666;
+  }
+  
+  .summaryDescription strong {
+    color: #2e7d32;
+  }
+  
+  /* Loading State */
+  .loadingContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  
+  .spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #4caf50;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  /* Responsive */
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+  
+    .header {
+      flex-direction: column;
+      gap: 1rem;
+    }
+  
+    .headerInfo {
+      width: 100%;
+      justify-content: space-between;
+    }
+  
+    .impactGrid {
+      grid-template-columns: 1fr;
+    }
+  
+    .secondaryGrid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  
+    .categoryGrid {
+      grid-template-columns: 1fr;
+    }
+  
+    .sdgGrid {
+      grid-template-columns: 1fr;
+    }
+  
+    .summaryGrid {
+      grid-template-columns: 1fr;
+    }
+  
+    .sectionHeader {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  
+    .barChart {
+      justify-content: flex-start;
+    }
+  }

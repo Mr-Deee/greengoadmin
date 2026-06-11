@@ -715,22 +715,3 @@
   }
 }
 
-/* Scrollbar Styling - Wrapped in :global */
-:global(::-webkit-scrollbar) {
-  width: 8px;
-  height: 8px;
-}
-
-:global(::-webkit-scrollbar-track) {
-  background: #f1f1f1;
-  border-radius: 10px;
-}
-
-:global(::-webkit-scrollbar-thumb) {
-  background: #888;
-  border-radius: 10px;
-}
-
-:global(::-webkit-scrollbar-thumb:hover) {
-  background: #555;
-}
