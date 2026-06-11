@@ -2,13 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { ref, onValue, update, remove, set, push, get } from 'firebase/database';
+import { ref, onValue, update, remove, set, push } from 'firebase/database';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { useRouter } from 'next/navigation';
 import styles from './users.module.css';
 
 // User role definitions - Aggregator includes Recycling Hub functionality
-const USER_ROLES = {
+const USER_ROLES: Record<string, {
+  name: string;
+  icon: string;
+  description: string;
+  node: string;
+  category: string;
+  color: string;
+}> = {
   super_admin: {
     name: 'Super Admin',
     icon: '👑',
@@ -153,10 +159,60 @@ interface User {
     district?: string;
     employees?: string;
   };
+  department?: string;
+  position?: string;
+  agency?: string;
+}
+
+interface WasteManagementInfo {
+  CompanyName?: string;
+  location?: string;
+  RecycleType?: string;
+  employees?: string;
+  district?: string;
+}
+
+interface UserData {
+  uid: string;
+  email: string;
+  firstName: string;
+  LastName: string;
+  name: string;
+  role: string;
+  phone: string;
+  phoneNumber: string;
+  district: string;
+  region: string;
+  organization: string;
+  status: string;
+  createdAt: string;
+  createdBy?: string;
+  location?: string;
+  SettlementType?: string;
+  gpsAddress?: string;
+  ghCardNo?: string;
+  WMSTYPE?: string;
+  WMSCATEGORY?: string;
+  detailsComp?: boolean;
+  wasteManagementInfo?: WasteManagementInfo;
+  userType?: string;
+  isActive?: boolean;
+  assignedDistrict?: string;
+  department?: string;
+  position?: string;
+  agency?: string;
+}
+
+interface AuditLog {
+  action: string;
+  userId: string;
+  userEmail: string;
+  role: string;
+  createdBy?: string;
+  timestamp: string;
 }
 
 export default function UserManagementPage() {
-  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -194,7 +250,6 @@ export default function UserManagementPage() {
   const fetchAllUsers = () => {
     const allUsers: User[] = [];
     let completedFetches = 0;
-    // Combine Aggregators and Recyclers into one role
     const nodes = ['Admin', 'Clients', 'Aggregators', 'Recyclers', 'FieldOperators', 'Businesses', 'Investors', 'Government', 'Regulators', 'PolicyMakers', 'NGOs', 'Sustainability', 'CivilSociety', 'PlatformManagers', 'PlatformLeadership'];
     const totalNodes = nodes.length;
 
@@ -206,7 +261,7 @@ export default function UserManagementPage() {
           const usersFromNode = Object.keys(data).map(key => ({
             id: key,
             uid: key,
-            ...data[key]
+            ...(data[key] as object)
           })) as User[];
           
           usersFromNode.forEach(user => {
@@ -215,7 +270,7 @@ export default function UserManagementPage() {
               if (node === 'Admin') role = 'super_admin';
               else if (node === 'Clients') role = 'client';
               else if (node === 'Aggregators') role = 'aggregator';
-              else if (node === 'Recyclers') role = 'aggregator'; // Recyclers become Aggregators
+              else if (node === 'Recyclers') role = 'aggregator';
               else if (node === 'FieldOperators') role = 'field_operator';
               else if (node === 'Businesses') role = 'business';
               else if (node === 'Investors') role = 'investor';
@@ -271,7 +326,7 @@ export default function UserManagementPage() {
       case 'civil_society': return 'Civil Society';
       case 'policy_maker': return 'Policy Maker';
       case 'client': return 'Client';
-      default: return USER_ROLES[role as keyof typeof USER_ROLES]?.name || role;
+      default: return USER_ROLES[role]?.name || role;
     }
   };
 
@@ -287,10 +342,10 @@ export default function UserManagementPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
       const uid = userCredential.user.uid;
       
-      const roleConfig = USER_ROLES[formData.role as keyof typeof USER_ROLES];
+      const roleConfig = USER_ROLES[formData.role];
       const nodePath = roleConfig?.node || 'Users';
       
-      const userData: any = {
+      const userData: UserData = {
         uid: uid,
         email: formData.email,
         firstName: formData.firstName,
@@ -340,23 +395,25 @@ export default function UserManagementPage() {
       await set(ref(db, `${nodePath}/${uid}`), userData);
       
       const auditRef = push(ref(db, 'auditLogs'));
-      await set(auditRef, {
+      const auditLog: AuditLog = {
         action: 'user_created',
         userId: uid,
         userEmail: formData.email,
         role: formData.role,
         createdBy: auth.currentUser?.uid,
         timestamp: new Date().toISOString()
-      });
+      };
+      await set(auditRef, auditLog);
       
       showToast(`User ${formData.firstName} ${formData.lastName} created successfully!`, 'success');
       setShowCreateModal(false);
       resetForm();
       fetchAllUsers();
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating user:', error);
-      showToast(error.message || 'Failed to create user', 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create user';
+      showToast(errorMessage, 'error');
     }
   };
 
@@ -365,12 +422,12 @@ export default function UserManagementPage() {
     if (!selectedUser) return;
 
     try {
-      const roleConfig = USER_ROLES[formData.role as keyof typeof USER_ROLES];
+      const roleConfig = USER_ROLES[formData.role];
       const nodePath = roleConfig?.node || 'Users';
       
       const userRef = ref(db, `${nodePath}/${selectedUser.id}`);
       
-      const updateData: any = {
+      const updateData: Record<string, string | boolean | undefined> = {
         firstName: formData.firstName,
         LastName: formData.lastName,
         name: `${formData.firstName} ${formData.lastName}`.trim(),
@@ -394,13 +451,15 @@ export default function UserManagementPage() {
       await update(userRef, updateData);
       
       const auditRef = push(ref(db, 'auditLogs'));
-      await set(auditRef, {
+      const auditLog: AuditLog = {
         action: 'user_updated',
         userId: selectedUser.uid,
         userEmail: selectedUser.email,
-        updatedBy: auth.currentUser?.uid,
+        role: formData.role,
+        createdBy: auth.currentUser?.uid,
         timestamp: new Date().toISOString()
-      });
+      };
+      await set(auditRef, auditLog);
       
       showToast(`User updated successfully!`, 'success');
       setShowEditModal(false);
@@ -428,13 +487,15 @@ export default function UserManagementPage() {
       await remove(ref(db, `${nodePath}/${user.id}`));
       
       const auditRef = push(ref(db, 'auditLogs'));
-      await set(auditRef, {
+      const auditLog: AuditLog = {
         action: 'user_deleted',
         userId: user.uid,
         userEmail: user.email,
-        deletedBy: auth.currentUser?.uid,
+        role: user.role,
+        createdBy: auth.currentUser?.uid,
         timestamp: new Date().toISOString()
-      });
+      };
+      await set(auditRef, auditLog);
       
       showToast(`User deleted successfully!`, 'success');
       fetchAllUsers();
@@ -506,9 +567,9 @@ export default function UserManagementPage() {
       settlementType: user.settlementType || '',
       gpsAddress: user.gpsAddress || '',
       ghCardNo: user.ghCardNo || '',
-      department: (user as any).department || '',
-      position: (user as any).position || '',
-      agency: (user as any).agency || '',
+      department: user.department || '',
+      position: user.position || '',
+      agency: user.agency || '',
       status: user.status
     });
     setShowEditModal(true);
@@ -597,131 +658,15 @@ export default function UserManagementPage() {
 
       {showRoleCards && (
         <div className={styles.roleCardsGrid}>
-          {/* Super Admin */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.super_admin.color }}>
-            <div className={styles.roleCardIcon}>👑</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Super Admin</div>
-              <div className={styles.roleCardCount}>{getRoleCount('super_admin')}</div>
+          {Object.entries(USER_ROLES).map(([key, value]) => (
+            <div key={key} className={styles.roleCard} style={{ borderTopColor: value.color }}>
+              <div className={styles.roleCardIcon}>{value.icon}</div>
+              <div className={styles.roleCardInfo}>
+                <div className={styles.roleCardName}>{value.name}</div>
+                <div className={styles.roleCardCount}>{getRoleCount(key)}</div>
+              </div>
             </div>
-          </div>
-          
-          {/* Clients */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.client.color }}>
-            <div className={styles.roleCardIcon}>🏠</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Clients</div>
-              <div className={styles.roleCardCount}>{getRoleCount('client')}</div>
-            </div>
-          </div>
-
-          {/* Aggregators (includes both Aggregators and Recycling Hubs) */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.aggregator.color }}>
-            <div className={styles.roleCardIcon}>🏢</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Aggregators</div>
-              <div className={styles.roleCardCount}>{getRoleCount('aggregator')}</div>
-            </div>
-          </div>
-          
-          {/* Field Operators */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.field_operator.color }}>
-            <div className={styles.roleCardIcon}>👷</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Field Operators</div>
-              <div className={styles.roleCardCount}>{getRoleCount('field_operator')}</div>
-            </div>
-          </div>
-
-          {/* Businesses */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.business.color }}>
-            <div className={styles.roleCardIcon}>🏭</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Businesses</div>
-              <div className={styles.roleCardCount}>{getRoleCount('business')}</div>
-            </div>
-          </div>
-          
-          {/* Investors */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.investor.color }}>
-            <div className={styles.roleCardIcon}>💰</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Investors</div>
-              <div className={styles.roleCardCount}>{getRoleCount('investor')}</div>
-            </div>
-          </div>
-
-          {/* Government */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.government.color }}>
-            <div className={styles.roleCardIcon}>🏛️</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Government</div>
-              <div className={styles.roleCardCount}>{getRoleCount('government')}</div>
-            </div>
-          </div>
-          
-          {/* Regulators */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.regulator.color }}>
-            <div className={styles.roleCardIcon}>⚖️</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Regulators</div>
-              <div className={styles.roleCardCount}>{getRoleCount('regulator')}</div>
-            </div>
-          </div>
-          
-          {/* Policy Makers */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.policy_maker.color }}>
-            <div className={styles.roleCardIcon}>📜</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Policy Makers</div>
-              <div className={styles.roleCardCount}>{getRoleCount('policy_maker')}</div>
-            </div>
-          </div>
-
-          {/* NGOs */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.ngo.color }}>
-            <div className={styles.roleCardIcon}>🤝</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>NGOs</div>
-              <div className={styles.roleCardCount}>{getRoleCount('ngo')}</div>
-            </div>
-          </div>
-          
-          {/* Sustainability Team */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.sustainability_team.color }}>
-            <div className={styles.roleCardIcon}>🌱</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Sustainability Team</div>
-              <div className={styles.roleCardCount}>{getRoleCount('sustainability_team')}</div>
-            </div>
-          </div>
-          
-          {/* Civil Society */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.civil_society.color }}>
-            <div className={styles.roleCardIcon}>👥</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Civil Society</div>
-              <div className={styles.roleCardCount}>{getRoleCount('civil_society')}</div>
-            </div>
-          </div>
-
-          {/* Platform Managers */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.platform_manager.color }}>
-            <div className={styles.roleCardIcon}>📱</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Platform Managers</div>
-              <div className={styles.roleCardCount}>{getRoleCount('platform_manager')}</div>
-            </div>
-          </div>
-          
-          {/* Platform Leadership */}
-          <div className={styles.roleCard} style={{ borderTopColor: USER_ROLES.platform_leadership.color }}>
-            <div className={styles.roleCardIcon}>👑</div>
-            <div className={styles.roleCardInfo}>
-              <div className={styles.roleCardName}>Platform Leadership</div>
-              <div className={styles.roleCardCount}>{getRoleCount('platform_leadership')}</div>
-            </div>
-          </div>
+          ))}
         </div>
       )}
 
@@ -801,7 +746,7 @@ export default function UserManagementPage() {
                 </td>
                 <td>
                   <span className={styles.roleBadge}>
-                    {USER_ROLES[user.role as keyof typeof USER_ROLES]?.icon || '👤'}
+                    {USER_ROLES[user.role]?.icon || '👤'}
                     {' '}
                     {getRoleDisplayName(user.role)}
                   </span>
@@ -917,34 +862,9 @@ export default function UserManagementPage() {
                   onChange={(e) => setFormData({...formData, role: e.target.value})}
                 >
                   <option value="">Select a role</option>
-                  <optgroup label="Administration">
-                    <option value="super_admin">👑 Super Admin</option>
-                  </optgroup>
-                  <optgroup label="Waste Generators">
-                    <option value="client">🏠 Client (Household/Institution/Organization)</option>
-                  </optgroup>
-                  <optgroup label="Waste Management">
-                    <option value="aggregator">🏢 Aggregator (Collection & Recycling)</option>
-                    <option value="field_operator">👷 Field Operator</option>
-                  </optgroup>
-                  <optgroup label="Business & Investment">
-                    <option value="business">🏭 Business</option>
-                    <option value="investor">💰 Investor</option>
-                  </optgroup>
-                  <optgroup label="Government & Regulatory">
-                    <option value="government">🏛️ Government</option>
-                    <option value="regulator">⚖️ Regulator</option>
-                    <option value="policy_maker">📜 Policy Maker</option>
-                  </optgroup>
-                  <optgroup label="Civil Society & Sustainability">
-                    <option value="ngo">🤝 NGO</option>
-                    <option value="sustainability_team">🌱 Sustainability Team</option>
-                    <option value="civil_society">👥 Civil Society</option>
-                  </optgroup>
-                  <optgroup label="Platform Management">
-                    <option value="platform_manager">📱 Platform Manager</option>
-                    <option value="platform_leadership">👑 Platform Leadership</option>
-                  </optgroup>
+                  {Object.entries(USER_ROLES).map(([key, value]) => (
+                    <option key={key} value={key}>{value.icon} {value.name}</option>
+                  ))}
                 </select>
               </div>
 
@@ -952,44 +872,13 @@ export default function UserManagementPage() {
                 <label>Status</label>
                 <select
                   value={formData.status}
-                  onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                  onChange={(e) => setFormData({...formData, status: e.target.value})}
                 >
                   <option value="pending">Pending Approval</option>
                   <option value="active">Active</option>
                   <option value="suspended">Suspended</option>
                 </select>
               </div>
-
-              {/* Client-specific fields */}
-              {formData.role === 'client' && (
-                <>
-                  <div className={styles.formRow}>
-                    <div className={styles.formGroup}>
-                      <label>Settlement Type</label>
-                      <select value={formData.settlementType} onChange={(e) => setFormData({...formData, settlementType: e.target.value})}>
-                        <option value="Household">Household</option>
-                        <option value="Institution">Institution</option>
-                        <option value="Organization">Organization</option>
-                        <option value="Commercial">Commercial</option>
-                      </select>
-                    </div>
-                    <div className={styles.formGroup}>
-                      <label>Location</label>
-                      <input type="text" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} placeholder="Address or area" />
-                    </div>
-                  </div>
-                  <div className={styles.formRow}>
-                    <div className={styles.formGroup}>
-                      <label>GPS Address</label>
-                      <input type="text" value={formData.gpsAddress} onChange={(e) => setFormData({...formData, gpsAddress: e.target.value})} placeholder="GPS coordinates" />
-                    </div>
-                    <div className={styles.formGroup}>
-                      <label>GH Card No</label>
-                      <input type="text" value={formData.ghCardNo} onChange={(e) => setFormData({...formData, ghCardNo: e.target.value})} placeholder="Ghana Card number" />
-                    </div>
-                  </div>
-                </>
-              )}
 
               <div className={styles.formRow}>
                 <div className={styles.formGroup}>
@@ -1012,17 +901,6 @@ export default function UserManagementPage() {
                   <input type="text" value={formData.region} onChange={(e) => setFormData({...formData, region: e.target.value})} placeholder="Region" />
                 </div>
               </div>
-
-              {formData.role && (
-                <div className={styles.roleInfo}>
-                  <div className={styles.roleIcon}>{USER_ROLES[formData.role as keyof typeof USER_ROLES]?.icon || '👤'}</div>
-                  <div>
-                    <strong>{USER_ROLES[formData.role as keyof typeof USER_ROLES]?.name}</strong>
-                    <p>{USER_ROLES[formData.role as keyof typeof USER_ROLES]?.description}</p>
-                    <small>Category: {USER_ROLES[formData.role as keyof typeof USER_ROLES]?.category}</small>
-                  </div>
-                </div>
-              )}
 
               <div className={styles.formActions}>
                 <button type="button" className={styles.cancelBtn} onClick={() => setShowCreateModal(false)}>Cancel</button>
@@ -1067,38 +945,13 @@ export default function UserManagementPage() {
                 </div>
                 <div className={styles.formGroup}>
                   <label>Status</label>
-                  <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value as any})}>
+                  <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
                     <option value="active">Active</option>
                     <option value="pending">Pending</option>
                     <option value="suspended">Suspended</option>
                   </select>
                 </div>
               </div>
-
-              {selectedUser.role === 'client' && (
-                <>
-                  <div className={styles.formRow}>
-                    <div className={styles.formGroup}>
-                      <label>Settlement Type</label>
-                      <input type="text" value={formData.settlementType} onChange={(e) => setFormData({...formData, settlementType: e.target.value})} />
-                    </div>
-                    <div className={styles.formGroup}>
-                      <label>Location</label>
-                      <input type="text" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} />
-                    </div>
-                  </div>
-                  <div className={styles.formRow}>
-                    <div className={styles.formGroup}>
-                      <label>GPS Address</label>
-                      <input type="text" value={formData.gpsAddress} onChange={(e) => setFormData({...formData, gpsAddress: e.target.value})} />
-                    </div>
-                    <div className={styles.formGroup}>
-                      <label>GH Card No</label>
-                      <input type="text" value={formData.ghCardNo} onChange={(e) => setFormData({...formData, ghCardNo: e.target.value})} />
-                    </div>
-                  </div>
-                </>
-              )}
 
               <div className={styles.formRow}>
                 <div className={styles.formGroup}>
