@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, get } from 'firebase/database';
 import { useRouter } from 'next/navigation';
 import styles from './sustainability.module.css';
 
@@ -40,6 +40,18 @@ interface MonthlyTrend {
   plasticRecycled: number;
 }
 
+interface AdminData {
+  role?: string;
+  name?: string;
+  email?: string;
+}
+
+interface SustainabilityData {
+  role?: string;
+  name?: string;
+  firstName?: string;
+}
+
 export default function SustainabilityPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -70,8 +82,8 @@ export default function SustainabilityPage() {
       try {
         // Check in Admin node first
         const adminRef = ref(db, `Admin/${user.uid}`);
-        const adminSnapshot = await (await import('firebase/database')).get(adminRef);
-        const adminData = adminSnapshot.val();
+        const adminSnapshot = await get(adminRef);
+        const adminData = adminSnapshot.val() as AdminData | null;
         
         let role = adminData?.role;
         let name = adminData?.name || user.email?.split('@')[0] || 'User';
@@ -79,8 +91,8 @@ export default function SustainabilityPage() {
         // If not admin, check in Sustainability node
         if (!role) {
           const sustainabilityRef = ref(db, `Sustainability/${user.uid}`);
-          const sustainabilitySnapshot = await (await import('firebase/database')).get(sustainabilityRef);
-          const sustainabilityData = sustainabilitySnapshot.val();
+          const sustainabilitySnapshot = await get(sustainabilityRef);
+          const sustainabilityData = sustainabilitySnapshot.val() as SustainabilityData | null;
           
           if (sustainabilityData) {
             role = sustainabilityData.role || 'sustainability_team';
@@ -163,16 +175,11 @@ export default function SustainabilityPage() {
     const co2Equivalent = carbonReduction;
     
     // Waste recovery rate (percentage of waste that was recycled)
-    const wasteRecoveryRate = totalWaste > 0 ? 85 : 0; // Estimated based on collection efficiency
+    const wasteRecoveryRate = totalWaste > 0 ? 85 : 0;
     
     // Additional environmental metrics
-    // Water saved: Recycling 1 ton of paper saves ~7,000 gallons, plastic ~1,800 gallons
     const waterSaved = (plasticRecycled / 1000) * 1800 + (wasteByCategory['Paper'] / 1000) * 7000;
-    
-    // Energy saved: Recycling 1 kg of plastic saves ~80 MJ, aluminum ~200 MJ
     const energySaved = (plasticRecycled / 1000) * 80 + (wasteByCategory['Metal'] / 1000) * 200;
-    
-    // Trees saved: 1 tree = 17 reams of paper, 1 ton of paper = 17 trees
     const treesSaved = (wasteByCategory['Paper'] / 1000) * 17;
     
     setMetrics({
@@ -430,7 +437,7 @@ export default function SustainabilityPage() {
           <div className={styles.sdgCard}>
             <div className={styles.sdgIcon}>🎯</div>
             <div className={styles.sdgNumber}>SDG 12</div>
-            <div className={styles.sdgTitle}>Responsible Consumption & Production</div>
+            <div className={styles.sdgTitle}>Responsible Consumption &amp; Production</div>
             <div className={styles.sdgProgress}>
               <div className={styles.sdgProgressBar} style={{ width: `${Math.min(100, (metrics.wasteRecoveryRate / 100) * 100)}%` }} />
             </div>
